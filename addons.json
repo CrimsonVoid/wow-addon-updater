@@ -1,0 +1,29 @@
+{
+    "Addons": [
+        {
+            "Name": "BigWigsMods/BigWigs",
+            "Dirs": [
+                "-BigWigs_KhazAlgar/"
+            ],
+            "RelType": 1
+        },
+        {
+            "Name": "BigWigsMods/LittleWigs",
+            "Dirs": [
+                "LittleWigs/",
+                "LittleWigs_Shadowlands/",
+                "LittleWigs_BattleForAzeroth/",
+                "LittleWigs_Cataclysm/"
+            ],
+            "RelType": 1
+        },
+        {
+            "Name": "WeakAuras/WeakAuras2",
+            "RelType": 1
+        }
+    ],
+    "UnmanagedAddons": {
+        "addonA": "https://example.com/wow/addonA"
+    },
+    "CacheDir": "cache"
+}
