@@ -95,16 +95,25 @@ func (am *AddonManager) debugPrint() {
 }
 
 func main() {
-	slog.SetLogLoggerLevel(slog.LevelDebug)
+	// slog.SetLogLoggerLevel(slog.LevelDebug)
+	const addonsCfg = "addons.json"
 
-	am, err := loadAddonCfg("addons.json")
-	check(err)
+	defer func() {
+		fmt.Println("\npress any key to exit...")
+		fmt.Scanf("h")
+	}()
+
+	am, err := loadAddonCfg(addonsCfg)
+	if err != nil {
+		fmt.Printf("error loading addons config from %v: %v\n", addonsCfg, err)
+		return
+	}
 	// am.debugPrint()
 	fmt.Println("")
 
 	for _, addon := range am.Addons {
 		if err := am.updateAddon(addon); err != nil {
-			slog.Debug("error updating addon", "name", addon.Name, "error", err)
+			fmt.Printf("[%v] error updating addon: %v\n", addon.Name, err)
 		}
 		fmt.Println("")
 	}
@@ -114,10 +123,7 @@ func main() {
 	}
 	fmt.Println("")
 
-	am.saveAddonCfg("addons.json")
-
-	// fmt.Println("\npress any key to exit...")
-	// fmt.Scanf("h")
+	am.saveAddonCfg(addonsCfg)
 }
 
 func loadAddonCfg(filename string) (*AddonManager, error) {
@@ -204,51 +210,50 @@ func (am *AddonManager) saveAddonCfg(filename string) error {
 }
 
 func (am *AddonManager) updateAddon(addon *Addon) error {
-	log := slog.With(slog.String("addon", addon.Name))
 	fmtTm := func(t time.Time) string {
-		return t.Local().Format(time.RFC822)
+		return t.Local().Format("Jan _2, 2006 15:04:05")
 	}
 
-	attrs := []any{slog.String("last_update", fmtTm(addon.UpdatedAt))}
+	lastUpdateInfo := fmt.Sprintf("last update: %v", fmtTm(addon.UpdatedAt))
 	if addon.RelType == GhTag {
-		attrs[0] = slog.String("refSha", addon.RefSha)
+		lastUpdateInfo = fmt.Sprintf("ref sha: %v", addon.RefSha)
 	} else if addon.RelType == GhAuto {
-		attrs = append(attrs, slog.String("refSha", addon.RefSha))
+		lastUpdateInfo += fmt.Sprintf(", ref sha: %v", addon.RefSha)
 	}
 
-	log.Info("checking for update", attrs...)
+	fmt.Printf("[%v] checking for update (%v)\n", addon.Name, lastUpdateInfo)
 	asset, err := am.getDlAsset(addon)
 	if err != nil {
 		return fmt.Errorf("could not find update data for %v: %w", addon.shortName, err)
 	}
 
 	if addon.Skip {
-		log.Info("skipping")
+		fmt.Printf("[%v] skipping\n", addon.Name)
 		return nil
 	}
 
 	switch asset.RelType {
 	case GhRel:
 		if !asset.UpdatedAt.After(addon.UpdatedAt) {
-			log.Info("no update found", slog.String("asset_update", fmtTm(asset.UpdatedAt)))
+			fmt.Printf("[%v] no update found (asset update: %v)\n", addon.Name, fmtTm(asset.UpdatedAt))
 			return nil
 		}
 	case GhTag:
 		if addon.RefSha == asset.RefSha {
-			log.Info("no update found", slog.String("asset_ref", asset.RefSha))
+			fmt.Printf("[%v] no update found (asset ref: %v)\n", addon.Name, asset.RefSha)
 			return nil
 		}
 	default:
 		return fmt.Errorf("unknown asset type for %v: found %v", addon.shortName, asset.RelType)
 	}
 
-	log.Info("downloading update", slog.String("updated", fmtTm(asset.UpdatedAt)), slog.String("archive", asset.Name))
+	fmt.Printf("[%v] downloading update %v (updated: %v)\n", addon.Name, asset.Name, fmtTm(asset.UpdatedAt))
 	err = am.downloadZip(asset, addon.shortName)
 	if err != nil {
 		return fmt.Errorf("unable to download update for %v: %w", addon.shortName, err)
 	}
 
-	log.Info("extracting update")
+	fmt.Printf("[%v] extracting update\n", addon.Name)
 	zipRd, err := zip.NewReader(bytes.NewReader(am.buf.Bytes()), int64(am.buf.Len()))
 	if err != nil {
 		return fmt.Errorf("addon update for %v not zip format: %w", addon.shortName, err)
@@ -257,7 +262,7 @@ func (am *AddonManager) updateAddon(addon *Addon) error {
 	if err = am.extractZip(addon, zipRd); err != nil {
 		return fmt.Errorf("error extracting update for %v: %w", addon.shortName, err)
 	}
-	log.Info("extracted", slog.Any("dirs", addon.ExtractedDirs))
+	fmt.Printf("[%v] extracted: %v\n", addon.Name, addon.ExtractedDirs)
 
 	addon.UpdatedAt = asset.UpdatedAt
 	addon.RefSha = asset.RefSha
@@ -507,10 +512,4 @@ func cacheDownload(url, fileCache string, buf *bytes.Buffer) error {
 	}
 
 	return nil
-}
-
-func check(err error) {
-	if err != nil {
-		panic(err)
-	}
 }
