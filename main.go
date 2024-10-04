@@ -123,7 +123,10 @@ func main() {
 	}
 	fmt.Println("")
 
-	am.saveAddonCfg(addonsCfg)
+	err = am.saveAddonCfg(addonsCfg)
+	if err != nil {
+		fmt.Printf("error saving addon confing to %v: %v\n", addonsCfg, err)
+	}
 }
 
 func loadAddonCfg(filename string) (*AddonManager, error) {
