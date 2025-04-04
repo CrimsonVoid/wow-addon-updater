@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -410,6 +411,7 @@ func (am *AddonManager) getTaggedRelease(addon *Addon, cacheFilename string) (*D
 		Status  string
 	}
 	const RelEndpoint = "https://api.github.com/repos/%v/releases/latest"
+	classicFlavors := regexp.MustCompile(`classic|bc|wrath|cata`)
 
 	err := cacheDownload(fmt.Sprintf(RelEndpoint, addon.Name), cacheFilename, am.buf)
 	if err != nil {
@@ -428,7 +430,7 @@ func (am *AddonManager) getTaggedRelease(addon *Addon, cacheFilename string) (*D
 		if asset.ContentType != "application/zip" {
 			continue
 		}
-		if strings.Contains(asset.Name, "cata") || strings.Contains(asset.Name, "classic") {
+		if classicFlavors.MatchString(asset.Name) {
 			continue
 		}
 		asset.RelType = GhRel
