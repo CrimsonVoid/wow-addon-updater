@@ -22,7 +22,7 @@ func main() {
 	fmt.Println("")
 
 	for _, addon := range am.Addons {
-		if err := am.updateAddon(addon); err != nil {
+		if err := addon.update(am.buf, am.CacheDir); err != nil {
 			addon.Logf("error updating addon: %v\n", err)
 		}
 		fmt.Println("")

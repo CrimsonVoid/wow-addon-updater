@@ -54,96 +54,96 @@ type AddonUpdateInfo struct {
 	ExtractedDirs []string
 }
 
-func (am *AddonManager) updateAddon(addon *Addon) error {
+func (a *Addon) update(buf *bytes.Buffer, cacheDir string) error {
 	fmtTm := func(t time.Time) string {
 		return t.Local().Format("Jan _2, 2006 15:04:05")
 	}
 
-	lastUpdateInfo := fmt.Sprintf("last update: %v", fmtTm(addon.UpdatedAt))
-	if addon.RelType == GhTag {
-		lastUpdateInfo = fmt.Sprintf("ref sha: %v", addon.RefSha)
+	lastUpdateInfo := fmt.Sprintf("last update: %v", fmtTm(a.UpdatedAt))
+	if a.RelType == GhTag {
+		lastUpdateInfo = fmt.Sprintf("ref sha: %v", a.RefSha)
 	}
 
-	addon.Logf("checking for update (%v)\n", lastUpdateInfo)
-	asset, err := am.getDlAsset(addon)
+	a.Logf("checking for update (%v)\n", lastUpdateInfo)
+	asset, err := a.getDlAsset(buf, cacheDir)
 	if err != nil {
-		return fmt.Errorf("could not find update data for %v: %w", addon.shortName, err)
+		return fmt.Errorf("could not find update data for %v: %w", a.shortName, err)
 	}
 
-	if addon.Skip {
-		addon.Logf("skipping\n")
+	if a.Skip {
+		a.Logf("skipping\n")
 		return nil
 	}
 
 	switch asset.RelType {
 	case GhRel:
-		if !asset.UpdatedAt.After(addon.UpdatedAt) {
-			addon.Logf("no update found (asset update: %v)\n", fmtTm(asset.UpdatedAt))
+		if !asset.UpdatedAt.After(a.UpdatedAt) {
+			a.Logf("no update found (asset update: %v)\n", fmtTm(asset.UpdatedAt))
 			return nil
 		}
 	case GhTag:
-		if addon.RefSha == asset.RefSha {
-			addon.Logf("no update found (asset ref: %v)\n", asset.RefSha)
+		if a.RefSha == asset.RefSha {
+			a.Logf("no update found (asset ref: %v)\n", asset.RefSha)
 			return nil
 		}
 	default:
-		return fmt.Errorf("unknown asset type for %v: found %v", addon.shortName, asset.RelType)
+		return fmt.Errorf("unknown asset type for %v: found %v", a.shortName, asset.RelType)
 	}
 
-	addon.Logf("downloading update %v (updated: %v)\n", asset.Name, fmtTm(asset.UpdatedAt))
-	err = am.downloadZip(asset, addon.shortName)
+	a.Logf("downloading update %v (updated: %v)\n", asset.Name, fmtTm(asset.UpdatedAt))
+	err = asset.downloadZip(a.shortName, buf, cacheDir)
 	if err != nil {
-		return fmt.Errorf("unable to download update for %v: %w", addon.shortName, err)
+		return fmt.Errorf("unable to download update for %v: %w", a.shortName, err)
 	}
 
-	addon.Logf("extracting update\n")
-	zipRd, err := zip.NewReader(bytes.NewReader(am.buf.Bytes()), int64(am.buf.Len()))
+	a.Logf("extracting update\n")
+	zipRd, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 	if err != nil {
-		return fmt.Errorf("addon update for %v not zip format: %w", addon.shortName, err)
+		return fmt.Errorf("addon update for %v not zip format: %w", a.shortName, err)
 	}
 
-	if err = am.extractZip(addon, zipRd); err != nil {
-		return fmt.Errorf("error extracting update for %v: %w", addon.shortName, err)
+	if err = a.extractZip(zipRd, cacheDir); err != nil {
+		return fmt.Errorf("error extracting update for %v: %w", a.shortName, err)
 	}
-	addon.Logf("extracted: %v\n", addon.ExtractedDirs)
+	a.Logf("extracted: %v\n", a.ExtractedDirs)
 
-	addon.UpdatedAt = asset.UpdatedAt
-	addon.RefSha = asset.RefSha
+	a.UpdatedAt = asset.UpdatedAt
+	a.RefSha = asset.RefSha
 
 	return nil
 }
 
-func (am *AddonManager) extractZip(addon *Addon, zipRd *zip.Reader) error {
+func (a *Addon) extractZip(zipRd *zip.Reader, cacheDir string) error {
 	// remove ExtractedDir from previous update
 	// loop over zip files, creating all dirs first, save files to temp slice
 	//   filter file ex/inclusions and update ExtractedDirs
 	// extract files from temp slice
 
 	addonsDir := "./"
-	if am.CacheDir != "" {
-		addonsDir = am.CacheDir + "/addons/"
+	if cacheDir != "" {
+		addonsDir = cacheDir + "/addons/"
 	}
 
 	// delete previously extracted dirs
-	for _, dir := range addon.ExtractedDirs {
+	for _, dir := range a.ExtractedDirs {
 		if err := os.RemoveAll(dir); err != nil {
 			return fmt.Errorf("error removing previously installed addon dir %v: %w", dir, err)
 		}
 	}
-	addon.ExtractedDirs = addon.ExtractedDirs[:0]
+	a.ExtractedDirs = a.ExtractedDirs[:0]
 
 	// create all dirs before extracting files
 	extractFiles := make([]*zip.File, 0, len(zipRd.File))
 	topLevelDirs := map[string]bool{} // unique set of top level dirs for ExtractedDirs
 	for _, file := range zipRd.File {
-		if skipUnzip(file.Name, addon) {
+		if skipUnzip(file.Name, a) {
 			continue
 		}
 
 		if file.Mode().IsDir() {
 			parentDir := file.Name[:strings.IndexByte(file.Name, '/')]
 			if _, ok := topLevelDirs[parentDir]; !ok {
-				addon.ExtractedDirs = append(addon.ExtractedDirs, parentDir)
+				a.ExtractedDirs = append(a.ExtractedDirs, parentDir)
 				topLevelDirs[parentDir] = true
 			}
 
@@ -206,15 +206,15 @@ func skipUnzip(filename string, addon *Addon) bool {
 	return len(addon.includeDirs) != 0
 }
 
-func (am *AddonManager) downloadZip(asset *DownloadAsset, addonShortName string) error {
+func (asset *DownloadAsset) downloadZip(addonShortName string, buf *bytes.Buffer, cacheDir string) error {
 	cacheFilename := ""
-	if am.CacheDir != "" {
-		cacheFilename = fmt.Sprintf("%v/%v-%v", am.CacheDir, addonShortName, asset.Name)
+	if cacheDir != "" {
+		cacheFilename = fmt.Sprintf("%v/%v-%v", cacheDir, addonShortName, asset.Name)
 	}
-	am.buf.Reset()
-	am.buf.Grow(int(asset.Size))
+	buf.Reset()
+	buf.Grow(int(asset.Size))
 
-	return cacheDownload(asset.DownloadUrl, cacheFilename, am.buf)
+	return cacheDownload(asset.DownloadUrl, cacheFilename, buf)
 }
 
 type DownloadAsset struct {
@@ -227,26 +227,26 @@ type DownloadAsset struct {
 	RelType     GhRelType
 }
 
-func (am *AddonManager) getDlAsset(addon *Addon) (*DownloadAsset, error) {
+func (a *Addon) getDlAsset(buf *bytes.Buffer, cacheDir string) (*DownloadAsset, error) {
 	cacheFilename := ""
 
-	switch addon.RelType {
+	switch a.RelType {
 	case GhRel:
-		if am.CacheDir != "" {
-			cacheFilename = fmt.Sprintf("%v/%v-rel.json", am.CacheDir, addon.shortName)
+		if cacheDir != "" {
+			cacheFilename = fmt.Sprintf("%v/%v-rel.json", cacheDir, a.shortName)
 		}
-		return am.getTaggedRelease(addon, cacheFilename)
+		return a.getTaggedRelease(buf, cacheFilename)
 	case GhTag:
-		if am.CacheDir != "" {
-			cacheFilename = fmt.Sprintf("%v/%v-ref.json", am.CacheDir, addon.shortName)
+		if cacheDir != "" {
+			cacheFilename = fmt.Sprintf("%v/%v-ref.json", cacheDir, a.shortName)
 		}
-		return am.getTaggedRef(addon, cacheFilename)
+		return a.getTaggedRef(buf, cacheFilename)
 	default:
-		return nil, fmt.Errorf("unknown github release type %v", addon.RelType)
+		return nil, fmt.Errorf("unknown github release type %v", a.RelType)
 	}
 }
 
-func (am *AddonManager) getTaggedRelease(addon *Addon, cacheFilename string) (*DownloadAsset, error) {
+func (a *Addon) getTaggedRelease(buf *bytes.Buffer, cacheFilename string) (*DownloadAsset, error) {
 	type GhTaggedRel struct {
 		TagName string `json:"tag_name"`
 		Assets  []*DownloadAsset
@@ -254,13 +254,13 @@ func (am *AddonManager) getTaggedRelease(addon *Addon, cacheFilename string) (*D
 	const RelEndpoint = "https://api.github.com/repos/%v/releases/latest"
 	classicFlavors := regexp.MustCompile(`classic|bc|wrath|cata`)
 
-	err := cacheDownload(fmt.Sprintf(RelEndpoint, addon.Name), cacheFilename, am.buf)
+	err := cacheDownload(fmt.Sprintf(RelEndpoint, a.Name), cacheFilename, buf)
 	if err != nil {
 		return nil, err
 	}
 
 	ghRelease := GhTaggedRel{}
-	if err := json.Unmarshal(am.buf.Bytes(), &ghRelease); err != nil {
+	if err := json.Unmarshal(buf.Bytes(), &ghRelease); err != nil {
 		return nil, fmt.Errorf("unmarshal error for tagged release: %w", err)
 	}
 
@@ -279,7 +279,7 @@ func (am *AddonManager) getTaggedRelease(addon *Addon, cacheFilename string) (*D
 	return nil, fmt.Errorf("no valid asset found")
 }
 
-func (am *AddonManager) getTaggedRef(addon *Addon, cacheFilename string) (*DownloadAsset, error) {
+func (a *Addon) getTaggedRef(buf *bytes.Buffer, cacheFilename string) (*DownloadAsset, error) {
 	type GhTaggedRef struct {
 		Ref    string
 		Object struct {
@@ -288,17 +288,17 @@ func (am *AddonManager) getTaggedRef(addon *Addon, cacheFilename string) (*Downl
 	}
 	const TagEndpoint = "https://api.github.com/repos/%v/git/refs/tags"
 
-	err := cacheDownload(fmt.Sprintf(TagEndpoint, addon.Name), cacheFilename, am.buf)
+	err := cacheDownload(fmt.Sprintf(TagEndpoint, a.Name), cacheFilename, buf)
 	if err != nil {
 		return nil, err
 	}
 
 	ghRefs := []GhTaggedRef{}
-	if err := json.Unmarshal(am.buf.Bytes(), &ghRefs); err != nil {
+	if err := json.Unmarshal(buf.Bytes(), &ghRefs); err != nil {
 		return nil, fmt.Errorf("unmarshal error for tagged ref: %w", err)
 	}
 	if len(ghRefs) == 0 {
-		return nil, fmt.Errorf("did not find valid ref for %v", addon.Name)
+		return nil, fmt.Errorf("did not find valid ref for %v", a.Name)
 	}
 
 	// ref.Ref sample:     refs/tags/31
@@ -308,7 +308,7 @@ func (am *AddonManager) getTaggedRef(addon *Addon, cacheFilename string) (*Downl
 	asset := &DownloadAsset{
 		Name:        ref.Ref[strings.LastIndexByte(ref.Ref, '/')+1:] + ".zip",
 		Size:        0,
-		DownloadUrl: fmt.Sprintf("https://github.com/%v/archive/%v.zip", addon.Name, ref.Ref),
+		DownloadUrl: fmt.Sprintf("https://github.com/%v/archive/%v.zip", a.Name, ref.Ref),
 		ContentType: "application/zip",
 		UpdatedAt:   time.Time{},
 		RefSha:      ref.Ref,
