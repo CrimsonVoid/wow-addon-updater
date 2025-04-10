@@ -5,8 +5,7 @@
             "Dirs": [
                 "-BigWigs_KhazAlgar/",
                 "-BigWigs_NerubarPalace/"
-            ],
-            "RelType": 1
+            ]
         },
         {
             "Name": "BigWigsMods/LittleWigs",
@@ -14,19 +13,16 @@
                 "LittleWigs/",
                 "LittleWigs_Shadowlands/",
                 "LittleWigs_BattleForAzeroth/"
-            ],
-            "RelType": 1
+            ]
         },
         {
-            "Name": "WeakAuras/WeakAuras2",
-            "RelType": 1
+            "Name": "WeakAuras/WeakAuras2"
         },
         {
             "Name": "curseforge-mirror/details",
             "Dirs": [
                 "Details/"
-            ],
-            "RelType": 1
+            ]
         }
     ],
     "UnmanagedAddons": {

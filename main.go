@@ -25,10 +25,10 @@ type DownloadAsset struct {
 	RelType     GhRelType
 }
 
-type GhRelType uint8
+type GhRelType int8
 
 const (
-	GhAuto GhRelType = iota
+	GhAuto GhRelType = iota - 1
 	GhRel
 	GhTag
 )
@@ -41,8 +41,8 @@ type Addon struct {
 	// top-level dirs to extract. empty list will extract everything except for excluded folders.
 	// folders starting with '-' will be excluded, takes priority over included dirs
 	Dirs []string `json:",omitempty"`
-	// 0|GhAuto = auto (default if omitted); 1|GhRel = github release; 2|GhTag = tagged commit ref
-	RelType GhRelType
+	// 0|GhRel = github release (default); 2|GhTag = tagged commit ref; -1|GhAuto = auto
+	RelType GhRelType `json:",omitempty"`
 	// skip updating this addon
 	Skip bool `json:",omitempty"`
 
