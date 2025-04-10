@@ -53,6 +53,8 @@ type Addon struct {
 	// top-level dirs to allow or skip extracting.  exclusions take prio over includeDirs if the
 	// same folder is listed in both
 	includeDirs, excludeDirs []string
+	// first part of Name; Name = PROJECT/ADDON, projName = PROJECT
+	projName string
 	// last part of Name; Name = PROJECT/ADDON, shortName = ADDON. used mostly for disk caches
 	shortName string
 }
@@ -80,7 +82,8 @@ func (am *AddonManager) debugPrint() {
 	fmt.Println("CacheDir:", am.CacheDir)
 
 	for _, addon := range am.Addons {
-		fmt.Println("Name:", addon.Name)
+		fmt.Printf("Name: \033[2m%v/\033[0m", addon.projName)
+		fmt.Printf("\033[1;36m%v\033[0m\n", addon.shortName)
 		fmt.Println("Dirs:", addon.Dirs)
 		fmt.Println("RelType:", addon.RelType)
 		fmt.Println("includeDirs:", addon.includeDirs)
@@ -95,13 +98,19 @@ func (am *AddonManager) debugPrint() {
 	fmt.Println("")
 }
 
+func (a *Addon) Logf(format string, args ...any) {
+	fmt.Printf("[\033[%vm%v/\033[0m", "2", a.projName)
+	fmt.Printf("\033[%vm%v\033[0m] ", "1;36", a.shortName)
+	fmt.Printf(format, args...)
+}
+
 func main() {
 	// slog.SetLogLoggerLevel(slog.LevelDebug)
 	const addonsCfg = "addons.json"
 
 	defer func() {
 		fmt.Println("\npress any key to exit...")
-		fmt.Scanf("h")
+		// fmt.Scanf("h")
 	}()
 
 	am, err := loadAddonCfg(addonsCfg)
@@ -114,7 +123,7 @@ func main() {
 
 	for _, addon := range am.Addons {
 		if err := am.updateAddon(addon); err != nil {
-			fmt.Printf("[%v] error updating addon: %v\n", addon.Name, err)
+			addon.Logf("error updating addon: %v\n", err)
 		}
 		fmt.Println("")
 	}
@@ -149,11 +158,12 @@ func loadAddonCfg(filename string) (*AddonManager, error) {
 	}
 
 	for _, addon := range am.Addons {
-		// update shortname; addon.Name = "PROJECT/ADDON"; addon.shortName = "ADDON"
+		// update shortname; addon.Name = "PROJECT/ADDON"; projName, shortName = "PROJECT", "ADDON"
 		idx := strings.LastIndexByte(addon.Name, '/')
 		if idx == -1 {
 			return nil, fmt.Errorf("addon name not formatted correctly: expected PROJECT/ADDON, found %v", addon.Name)
 		}
+		addon.projName = addon.Name[:idx]
 		addon.shortName = addon.Name[idx+1:]
 
 		// set addon.AddonUpdateInfo from addonManager.UpdateInfo
@@ -225,39 +235,39 @@ func (am *AddonManager) updateAddon(addon *Addon) error {
 		lastUpdateInfo += fmt.Sprintf(", ref sha: %v", addon.RefSha)
 	}
 
-	fmt.Printf("[%v] checking for update (%v)\n", addon.Name, lastUpdateInfo)
+	addon.Logf("checking for update (%v)\n", lastUpdateInfo)
 	asset, err := am.getDlAsset(addon)
 	if err != nil {
 		return fmt.Errorf("could not find update data for %v: %w", addon.shortName, err)
 	}
 
 	if addon.Skip {
-		fmt.Printf("[%v] skipping\n", addon.Name)
+		addon.Logf("skipping\n")
 		return nil
 	}
 
 	switch asset.RelType {
 	case GhRel:
 		if !asset.UpdatedAt.After(addon.UpdatedAt) {
-			fmt.Printf("[%v] no update found (asset update: %v)\n", addon.Name, fmtTm(asset.UpdatedAt))
+			addon.Logf("no update found (asset update: %v)\n", fmtTm(asset.UpdatedAt))
 			return nil
 		}
 	case GhTag:
 		if addon.RefSha == asset.RefSha {
-			fmt.Printf("[%v] no update found (asset ref: %v)\n", addon.Name, asset.RefSha)
+			addon.Logf("no update found (asset ref: %v)\n", asset.RefSha)
 			return nil
 		}
 	default:
 		return fmt.Errorf("unknown asset type for %v: found %v", addon.shortName, asset.RelType)
 	}
 
-	fmt.Printf("[%v] downloading update %v (updated: %v)\n", addon.Name, asset.Name, fmtTm(asset.UpdatedAt))
+	addon.Logf("downloading update %v (updated: %v)\n", asset.Name, fmtTm(asset.UpdatedAt))
 	err = am.downloadZip(asset, addon.shortName)
 	if err != nil {
 		return fmt.Errorf("unable to download update for %v: %w", addon.shortName, err)
 	}
 
-	fmt.Printf("[%v] extracting update\n", addon.Name)
+	addon.Logf("extracting update\n")
 	zipRd, err := zip.NewReader(bytes.NewReader(am.buf.Bytes()), int64(am.buf.Len()))
 	if err != nil {
 		return fmt.Errorf("addon update for %v not zip format: %w", addon.shortName, err)
@@ -266,7 +276,7 @@ func (am *AddonManager) updateAddon(addon *Addon) error {
 	if err = am.extractZip(addon, zipRd); err != nil {
 		return fmt.Errorf("error extracting update for %v: %w", addon.shortName, err)
 	}
-	fmt.Printf("[%v] extracted: %v\n", addon.Name, addon.ExtractedDirs)
+	addon.Logf("extracted: %v\n", addon.ExtractedDirs)
 
 	addon.UpdatedAt = asset.UpdatedAt
 	addon.RefSha = asset.RefSha
