@@ -15,8 +15,7 @@ import (
 type GhRelType int8
 
 const (
-	GhAuto GhRelType = iota - 1
-	GhRel
+	GhRel = iota
 	GhTag
 )
 
@@ -28,7 +27,7 @@ type Addon struct {
 	// top-level dirs to extract. empty list will extract everything except for excluded folders.
 	// folders starting with '-' will be excluded, takes priority over included dirs
 	Dirs []string `json:",omitempty"`
-	// 0|GhRel = github release (default); 2|GhTag = tagged commit ref; -1|GhAuto = auto
+	// 0|GhRel = github release (default); 1|GhTag = tagged commit
 	RelType GhRelType `json:",omitempty"`
 	// skip updating this addon
 	Skip bool `json:",omitempty"`
@@ -63,8 +62,6 @@ func (am *AddonManager) updateAddon(addon *Addon) error {
 	lastUpdateInfo := fmt.Sprintf("last update: %v", fmtTm(addon.UpdatedAt))
 	if addon.RelType == GhTag {
 		lastUpdateInfo = fmt.Sprintf("ref sha: %v", addon.RefSha)
-	} else if addon.RelType == GhAuto {
-		lastUpdateInfo += fmt.Sprintf(", ref sha: %v", addon.RefSha)
 	}
 
 	addon.Logf("checking for update (%v)\n", lastUpdateInfo)
@@ -230,37 +227,29 @@ type DownloadAsset struct {
 	RelType     GhRelType
 }
 
-var errNoTaggedRel = fmt.Errorf("no tagged release found")
-
 func (am *AddonManager) getDlAsset(addon *Addon) (*DownloadAsset, error) {
 	cacheFilename := ""
 
-	if addon.RelType == GhAuto || addon.RelType == GhRel {
+	switch addon.RelType {
+	case GhRel:
 		if am.CacheDir != "" {
 			cacheFilename = fmt.Sprintf("%v/%v-rel.json", am.CacheDir, addon.shortName)
 		}
-
-		asset, err := am.getTaggedRelease(addon, cacheFilename)
-		if err == nil {
-			return asset, nil
-		} else if !(addon.RelType == GhAuto && err == errNoTaggedRel) {
-			return nil, fmt.Errorf("no valid asset found for %v: %w", addon.Name, err)
+		return am.getTaggedRelease(addon, cacheFilename)
+	case GhTag:
+		if am.CacheDir != "" {
+			cacheFilename = fmt.Sprintf("%v/%v-ref.json", am.CacheDir, addon.shortName)
 		}
+		return am.getTaggedRef(addon, cacheFilename)
+	default:
+		return nil, fmt.Errorf("unknown github release type %v", addon.RelType)
 	}
-
-	if am.CacheDir != "" {
-		cacheFilename = fmt.Sprintf("%v/%v-ref.json", am.CacheDir, addon.shortName)
-	}
-	asset, err := am.getTaggedRef(addon, cacheFilename)
-
-	return asset, err
 }
 
 func (am *AddonManager) getTaggedRelease(addon *Addon, cacheFilename string) (*DownloadAsset, error) {
 	type GhTaggedRel struct {
 		TagName string `json:"tag_name"`
 		Assets  []*DownloadAsset
-		Status  string
 	}
 	const RelEndpoint = "https://api.github.com/repos/%v/releases/latest"
 	classicFlavors := regexp.MustCompile(`classic|bc|wrath|cata`)
@@ -273,9 +262,6 @@ func (am *AddonManager) getTaggedRelease(addon *Addon, cacheFilename string) (*D
 	ghRelease := GhTaggedRel{}
 	if err := json.Unmarshal(am.buf.Bytes(), &ghRelease); err != nil {
 		return nil, fmt.Errorf("unmarshal error for tagged release: %w", err)
-	}
-	if ghRelease.Status == "404" {
-		return nil, errNoTaggedRel
 	}
 
 	for _, asset := range ghRelease.Assets {
