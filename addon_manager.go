@@ -84,6 +84,19 @@ func loadAddonCfg(filename string) (*AddonManager, error) {
 	return am, nil
 }
 
+func (am *AddonManager) updateAddons() {
+	for _, addon := range am.Addons {
+		if err := addon.update(am.buf, am.CacheDir); err != nil {
+			addon.Logf("%v %v\n", tcRed("error updating addon"), err)
+		}
+		fmt.Println("")
+	}
+
+	for addon, url := range am.UnmanagedAddons {
+		fmt.Printf("%v: %v\n", tcBlue(addon), url)
+	}
+}
+
 func (am *AddonManager) saveAddonCfg(filename string) error {
 	// delete addons in UpdateInfo that are not in Addons
 	addonsDeleted := []string{}

@@ -9,15 +9,15 @@ import (
 	"os"
 )
 
-func cacheDownload(url string, buf *bytes.Buffer, fileCache string) error {
-	// fileCache exists => read from disk, write to buf
-	// fileCache missing => read from net, write to buf (& disk if fileCache provided)
+func cacheDownload(url string, buf *bytes.Buffer, cacheFile string) error {
+	// cacheFile exists on disk => read from disk, write to buf
+	// cacheFile missing on disk => read from net, write to buf (& disk if cacheFile provided)
 	buf.Reset()
 
 	var rd io.Reader
-	if file, err := os.Open(fileCache); err == nil {
-		// optimistically try reading from fileCache
-		slog.Debug("reading from cache", "filename", fileCache)
+	if file, err := os.Open(cacheFile); err == nil {
+		// optimistically try reading from cacheFile
+		slog.Debug("reading from cache", "filename", cacheFile)
 		defer file.Close()
 		rd = file
 	} else {
@@ -28,9 +28,9 @@ func cacheDownload(url string, buf *bytes.Buffer, fileCache string) error {
 		defer res.Body.Close()
 		rd = res.Body
 
-		// copy data to fileCache while reading if provided and not found on disk
-		if fileCache != "" {
-			file, err := os.Create(fileCache)
+		// copy data to cacheFile while reading if provided and not found on disk
+		if cacheFile != "" {
+			file, err := os.Create(cacheFile)
 			if err != nil {
 				return fmt.Errorf("could not create file %v: %w", file, err)
 			}
@@ -40,8 +40,7 @@ func cacheDownload(url string, buf *bytes.Buffer, fileCache string) error {
 		}
 	}
 
-	_, err := io.Copy(buf, rd)
-	if err != nil {
+	if _, err := io.Copy(buf, rd); err != nil {
 		return fmt.Errorf("error copying data: %w", err)
 	}
 

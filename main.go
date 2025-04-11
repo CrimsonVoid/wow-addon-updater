@@ -20,24 +20,9 @@ func main() {
 	}
 	// am.debugPrint()
 
-	fmt.Println("")
-	updateAddons(am)
-	fmt.Println("")
+	am.updateAddons()
 
 	if err = am.saveAddonCfg(addonsCfg); err != nil {
 		fmt.Printf("error saving addon confing to %v: %v\n", addonsCfg, err)
-	}
-}
-
-func updateAddons(am *AddonManager) {
-	for _, addon := range am.Addons {
-		if err := addon.update(am.buf, am.CacheDir); err != nil {
-			addon.Logf("%v %v\n", tcRed("error updating addon"), err)
-		}
-		fmt.Println("")
-	}
-
-	for addon, url := range am.UnmanagedAddons {
-		fmt.Printf("%v: %v\n", tcBlue(addon), url)
 	}
 }

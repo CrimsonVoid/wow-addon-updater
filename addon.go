@@ -22,8 +22,6 @@ const (
 )
 
 type Addon struct {
-	// == public members
-
 	// addon name from github, expected format PROJECT/ADDON
 	Name string
 	// top-level dirs to extract. empty list will extract everything except for excluded folders.
@@ -34,18 +32,13 @@ type Addon struct {
 	// skip updating this addon
 	Skip bool `json:",omitempty"`
 
-	// == private members
-
 	// reference to AddonManager.UpdateInfo[Name]
 	*AddonUpdateInfo `json:"-"`
 	// top-level dirs to allow or skip extracting.  exclusions take prio over includeDirs if the
 	// same folder is listed in both
 	includeDirs, excludeDirs []string
-	// first part of Name; Name = PROJECT/ADDON, projName = PROJECT/ (including trailing slash). used
-	// mainly for logs
-	projName string
-	// last part of Name; Name = PROJECT/ADDON, shortName = ADDON. used mostly for disk caches
-	shortName string
+	// Name, projName, shortName = PROJECT/ADDON, PROJECT/, ADDON
+	projName, shortName string
 }
 
 type AddonUpdateInfo struct {
@@ -60,54 +53,50 @@ type AddonUpdateInfo struct {
 }
 
 func (a *Addon) update(buf *bytes.Buffer, cacheDir string) error {
-	fmtTm := func(t time.Time) string {
-		return tcDim(t.Local().Format("Jan 2, 2006"))
+	getUpdateInfo := func(t time.Time, ref string) string {
+		if a.RelType == GhRel {
+			return tcDim(t.Local().Format("Jan 2, 2006"))
+		}
+		return tcDim(ref)
 	}
 
-	lastUpdateInfo := fmtTm(a.UpdatedAt)
-	if a.RelType == GhTag {
-		lastUpdateInfo = tcDim(a.RefSha)
-	}
-
-	a.Logf("checking for update (last update: %v on %v)\n", tcGreen(a.Version), lastUpdateInfo)
+	a.Logf("checking for update (last update: %v on %v)\n", tcGreen(a.Version), getUpdateInfo(a.UpdatedAt, a.RefSha))
 	asset, err := a.checkUpdate(buf, cacheDir)
 	if err != nil {
 		return fmt.Errorf("could not find update data for %v: %w", a.shortName, err)
 	}
 
-	updateInfo := fmtTm(asset.UpdatedAt)
-	if a.RelType == GhTag {
-		updateInfo = tcDim(asset.RefSha)
-	}
-
-	if (asset.RelType == GhRel && !asset.UpdatedAt.After(a.UpdatedAt)) ||
-		(asset.RelType == GhTag && a.RefSha == asset.RefSha) {
+	updateInfo := getUpdateInfo(asset.UpdatedAt, asset.RefSha)
+	if !a.hasUpdate(asset) {
 		a.Logf("no update found (%v on %v)\n", tcGreen(asset.Version), updateInfo)
 		return nil
-	}
-	if a.Skip {
-		// todo: should we skip checking for updates?
+	} else if a.Skip {
 		a.Logf("skipping update (%v on %v)\n", tcGreen(asset.Version), updateInfo)
 		return nil
 	}
 
 	a.Logf("downloading update %v (%v on %v)\n", asset.Name, tcGreen(asset.Version), updateInfo)
-	if err = asset.downloadZip(a.shortName, buf, cacheDir); err != nil {
+	if err = a.downloadZip(asset, buf, cacheDir); err != nil {
 		return fmt.Errorf("unable to download update for %v: %w", a.shortName, err)
 	}
 
-	a.Logf("unzipping ")
+	a.Logf("unzipping\n")
 	if err = a.extractZip(buf.Bytes(), cacheDir); err != nil {
-		fmt.Println("") // newline for unbroken Logf above
 		return fmt.Errorf("error extracting update for %v: %w", a.shortName, err)
 	}
-	fmt.Println(tcMagentaDim(fmt.Sprint(a.ExtractedDirs)))
+	a.Logf("extracted %v\n", tcMagentaDim(fmt.Sprint(a.ExtractedDirs)))
 
 	a.Version = asset.Version
 	a.UpdatedAt = asset.UpdatedAt
 	a.RefSha = asset.RefSha
 
 	return nil
+}
+
+func (a *Addon) hasUpdate(asset *DownloadAsset) bool {
+	isUpdated := (asset.RelType == GhRel && !asset.UpdatedAt.After(a.UpdatedAt)) ||
+		(asset.RelType == GhTag && a.RefSha == asset.RefSha)
+	return !isUpdated
 }
 
 func (a *Addon) extractZip(data []byte, cacheDir string) error {
@@ -119,11 +108,7 @@ func (a *Addon) extractZip(data []byte, cacheDir string) error {
 	if err != nil {
 		return fmt.Errorf("addon update for %v not zip format: %w", a.shortName, err)
 	}
-
-	addonsDir := "./"
-	if cacheDir != "" {
-		addonsDir = cacheDir + "/addons/"
-	}
+	addonsDir := mkCacheFile(cacheDir, "addons/")
 
 	// delete previously extracted dirs
 	for _, dir := range a.ExtractedDirs {
@@ -137,7 +122,7 @@ func (a *Addon) extractZip(data []byte, cacheDir string) error {
 	extractFiles := make([]*zip.File, 0, len(zipRd.File))
 	topLevelDirs := map[string]bool{} // unique set of top level dirs for ExtractedDirs
 	for _, file := range zipRd.File {
-		if skipUnzip(file.Name, a) {
+		if skipUnzip(a, file.Name) {
 			continue
 		}
 
@@ -189,7 +174,7 @@ func (a *Addon) extractZip(data []byte, cacheDir string) error {
 	return nil
 }
 
-func skipUnzip(filename string, addon *Addon) bool {
+func skipUnzip(addon *Addon, filename string) bool {
 	for _, exclude := range addon.excludeDirs {
 		if strings.HasPrefix(filename, exclude) {
 			return true
@@ -207,8 +192,8 @@ func skipUnzip(filename string, addon *Addon) bool {
 	return len(addon.includeDirs) != 0
 }
 
-func (asset *DownloadAsset) downloadZip(addonShortName string, buf *bytes.Buffer, cacheDir string) error {
-	cacheFilename := mkCacheFile(cacheDir, "%v-%v", addonShortName, asset.Name)
+func (a *Addon) downloadZip(asset *DownloadAsset, buf *bytes.Buffer, cacheDir string) error {
+	cacheFilename := mkCacheFile(cacheDir, "%v-%v", a.shortName, asset.Name)
 	buf.Reset()
 	buf.Grow(int(asset.Size))
 
