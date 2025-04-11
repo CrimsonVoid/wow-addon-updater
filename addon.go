@@ -208,10 +208,7 @@ func skipUnzip(filename string, addon *Addon) bool {
 }
 
 func (asset *DownloadAsset) downloadZip(addonShortName string, buf *bytes.Buffer, cacheDir string) error {
-	cacheFilename := ""
-	if cacheDir != "" {
-		cacheFilename = fmt.Sprintf("%v/%v-%v", cacheDir, addonShortName, asset.Name)
-	}
+	cacheFilename := mkCacheFile(cacheDir, "%v-%v", addonShortName, asset.Name)
 	buf.Reset()
 	buf.Grow(int(asset.Size))
 
@@ -261,11 +258,7 @@ func (a *Addon) getTaggedRelease(buf *bytes.Buffer, cacheDir string) (*DownloadA
 	classicFlavors := regexp.MustCompile(`classic|bc|wrath|cata`)
 	isMainline := func(m *ReleaseMetadata) bool { return m.Flavor == "mainline" }
 	releaseManifest := func(a *DownloadAsset) bool { return a.Name == "release.json" && a.ContentType == "application/json" }
-
-	cacheFilename := ""
-	if cacheDir != "" {
-		cacheFilename = fmt.Sprintf("%v/%v-rel.json", cacheDir, a.shortName)
-	}
+	cacheFilename := mkCacheFile(cacheDir, "%v-rel.json", a.shortName)
 
 	ghRelease := GhTaggedRel{}
 	if err := cacheDownload(fmt.Sprintf(RelEndpoint, a.Name), buf, cacheFilename); err != nil {
@@ -292,11 +285,7 @@ func (a *Addon) getTaggedRelease(buf *bytes.Buffer, cacheDir string) (*DownloadA
 		return nil, fmt.Errorf("no valid asset found")
 	default:
 		relAsset := ghRelease.Assets[idx]
-
-		cacheRelManifest := ""
-		if cacheDir != "" {
-			cacheRelManifest = fmt.Sprintf("%v/%v-addonRel.json", cacheDir, a.shortName)
-		}
+		cacheRelManifest := mkCacheFile(cacheDir, "%v-addonRel.json", a.shortName)
 
 		addonReleases := ReleaseInfo{}
 		if err := cacheDownload(relAsset.DownloadUrl, buf, cacheRelManifest); err != nil {
@@ -337,11 +326,7 @@ func (a *Addon) getTaggedRef(buf *bytes.Buffer, cacheDir string) (*DownloadAsset
 		}
 	}
 	const TagEndpoint = "https://api.github.com/repos/%v/git/refs/tags"
-
-	cacheFilename := ""
-	if cacheDir != "" {
-		cacheFilename = fmt.Sprintf("%v/%v-ref.json", cacheDir, a.shortName)
-	}
+	cacheFilename := mkCacheFile(cacheDir, "%v-ref.json", a.shortName)
 
 	ghRefs := []GhTaggedRef{}
 	if err := cacheDownload(fmt.Sprintf(TagEndpoint, a.Name), buf, cacheFilename); err != nil {

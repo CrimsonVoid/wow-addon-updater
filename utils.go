@@ -48,6 +48,14 @@ func cacheDownload(url string, buf *bytes.Buffer, fileCache string) error {
 	return nil
 }
 
+func mkCacheFile(cacheDir string, m string, a ...any) string {
+	if cacheDir == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(cacheDir+"/"+m, a...)
+}
+
 // terminal colors & styles
 
 func tcDim(s string) string {
