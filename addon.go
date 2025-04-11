@@ -45,7 +45,7 @@ type AddonUpdateInfo struct {
 	// addon version from release.json if found or filename
 	Version string `json:",omitempty"`
 	// when addon was last updated (exclusive w/ RefSha)
-	UpdatedAt time.Time
+	UpdatedOn time.Time
 	// sha hash of latest tagged reference (exclusive w/ UpdatedAt)
 	RefSha string `json:",omitempty"`
 	// list of folders managed by us, deleted before extracting update
@@ -60,7 +60,7 @@ func (a *Addon) update(buf *bytes.Buffer, cacheDir string) error {
 		return tcDim(ref)
 	}
 
-	a.Logf("checking for update (last update: %v on %v)\n", tcGreen(a.Version), getUpdateInfo(a.UpdatedAt, a.RefSha))
+	a.Logf("checking for update (last update: %v on %v)\n", tcGreen(a.Version), getUpdateInfo(a.UpdatedOn, a.RefSha))
 	asset, err := a.checkUpdate(buf, cacheDir)
 	if err != nil {
 		return fmt.Errorf("could not find update data for %v: %w", a.shortName, err)
@@ -87,16 +87,15 @@ func (a *Addon) update(buf *bytes.Buffer, cacheDir string) error {
 	a.Logf("extracted %v\n", tcMagentaDim(fmt.Sprint(a.ExtractedDirs)))
 
 	a.Version = asset.Version
-	a.UpdatedAt = asset.UpdatedAt
+	a.UpdatedOn = asset.UpdatedAt
 	a.RefSha = asset.RefSha
 
 	return nil
 }
 
 func (a *Addon) hasUpdate(asset *DownloadAsset) bool {
-	isUpdated := (asset.RelType == GhRel && !asset.UpdatedAt.After(a.UpdatedAt)) ||
-		(asset.RelType == GhTag && a.RefSha == asset.RefSha)
-	return !isUpdated
+	return (asset.RelType == GhRel && a.UpdatedOn.Before(asset.UpdatedAt)) ||
+		(asset.RelType == GhTag && a.RefSha != asset.RefSha)
 }
 
 func (a *Addon) extractZip(data []byte, cacheDir string) error {
@@ -248,8 +247,7 @@ func (a *Addon) getTaggedRelease(buf *bytes.Buffer, cacheDir string) (*DownloadA
 	ghRelease := GhTaggedRel{}
 	if err := cacheDownload(fmt.Sprintf(RelEndpoint, a.Name), buf, cacheFilename); err != nil {
 		return nil, fmt.Errorf("error fetching update info: %w", err)
-	}
-	if err := json.Unmarshal(buf.Bytes(), &ghRelease); err != nil {
+	} else if err := json.Unmarshal(buf.Bytes(), &ghRelease); err != nil {
 		return nil, fmt.Errorf("unmarshal error for tagged release: %w", err)
 	}
 
@@ -275,8 +273,7 @@ func (a *Addon) getTaggedRelease(buf *bytes.Buffer, cacheDir string) (*DownloadA
 		addonReleases := ReleaseInfo{}
 		if err := cacheDownload(relAsset.DownloadUrl, buf, cacheRelManifest); err != nil {
 			return nil, fmt.Errorf("error fetching release manifest: %w", err)
-		}
-		if err := json.Unmarshal(buf.Bytes(), &addonReleases); err != nil {
+		} else if err := json.Unmarshal(buf.Bytes(), &addonReleases); err != nil {
 			return nil, fmt.Errorf("unmarshal error for release manifest: %w", err)
 		}
 
@@ -312,15 +309,13 @@ func (a *Addon) getTaggedRef(buf *bytes.Buffer, cacheDir string) (*DownloadAsset
 	}
 	const TagEndpoint = "https://api.github.com/repos/%v/git/refs/tags"
 	cacheFilename := mkCacheFile(cacheDir, "%v-ref.json", a.shortName)
-
 	ghRefs := []GhTaggedRef{}
+
 	if err := cacheDownload(fmt.Sprintf(TagEndpoint, a.Name), buf, cacheFilename); err != nil {
 		return nil, err
-	}
-	if err := json.Unmarshal(buf.Bytes(), &ghRefs); err != nil {
+	} else if err := json.Unmarshal(buf.Bytes(), &ghRefs); err != nil {
 		return nil, fmt.Errorf("unmarshal error for tagged ref: %w", err)
-	}
-	if len(ghRefs) == 0 {
+	} else if len(ghRefs) == 0 {
 		return nil, fmt.Errorf("did not find valid ref for %v", a.Name)
 	}
 

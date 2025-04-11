@@ -1,3 +1,4 @@
 cache/
 .direnv/
 addons-orig.json
+*.exe
