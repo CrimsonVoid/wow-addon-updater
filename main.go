@@ -10,7 +10,7 @@ func main() {
 
 	defer func() {
 		fmt.Println("\npress any key to exit...")
-		// fmt.Scanf("h")
+		fmt.Scanf("h")
 	}()
 
 	am, err := loadAddonCfg(addonsCfg)
