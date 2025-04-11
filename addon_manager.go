@@ -39,12 +39,16 @@ func loadAddonCfg(filename string) (*AddonManager, error) {
 	}
 
 	for _, addon := range am.Addons {
+		if addon.RelType >= GhEnd {
+			return nil, fmt.Errorf("unknown release type for addon %v: %v", addon.Name, addon.RelType)
+		}
+
 		// update shortname; addon.Name = "PROJECT/ADDON"; projName, shortName = "PROJECT", "ADDON"
 		idx := strings.LastIndexByte(addon.Name, '/')
 		if idx == -1 {
 			return nil, fmt.Errorf("addon name not formatted correctly: expected PROJECT/ADDON, found %v", addon.Name)
 		}
-		addon.projName = addon.Name[:idx]
+		addon.projName = addon.Name[:idx+1]
 		addon.shortName = addon.Name[idx+1:]
 
 		// set addon.AddonUpdateInfo from addonManager.UpdateInfo
@@ -108,8 +112,7 @@ func (am *AddonManager) debugPrint() {
 	fmt.Println("CacheDir:", am.CacheDir)
 
 	for _, addon := range am.Addons {
-		fmt.Printf("Name: \033[2m%v/\033[0m", addon.projName)
-		fmt.Printf("\033[1;36m%v\033[0m\n", addon.shortName)
+		fmt.Printf("Name: %v%v\n", tcDim(addon.projName), tcBlue(addon.shortName))
 		fmt.Println("Dirs:", addon.Dirs)
 		fmt.Println("RelType:", addon.RelType)
 		fmt.Println("includeDirs:", addon.includeDirs)

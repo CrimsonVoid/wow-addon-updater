@@ -16,13 +16,18 @@
             ]
         },
         {
-            "Name": "WeakAuras/WeakAuras2"
+            "Name": "WeakAuras/WeakAuras2",
+            "Skip": true
         },
         {
-            "Name": "curseforge-mirror/details",
-            "Dirs": [
-                "Details/"
-            ]
+            "Name": "kesava-wow/kuinameplates2"
+        },
+        {
+            "Name": "rljohn/kuinameplates-target-helper"
+        },
+        {
+            "Name": "kesava-wow/kuispelllistconfig",
+            "RelType": 1
         }
     ],
     "UnmanagedAddons": {

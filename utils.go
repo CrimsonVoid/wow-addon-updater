@@ -9,7 +9,7 @@ import (
 	"os"
 )
 
-func cacheDownload(url, fileCache string, buf *bytes.Buffer) error {
+func cacheDownload(url string, buf *bytes.Buffer, fileCache string) error {
 	// fileCache exists => read from disk, write to buf
 	// fileCache missing => read from net, write to buf (& disk if fileCache provided)
 	buf.Reset()
@@ -46,4 +46,26 @@ func cacheDownload(url, fileCache string, buf *bytes.Buffer) error {
 	}
 
 	return nil
+}
+
+// terminal colors & styles
+
+func tcDim(s string) string {
+	return "\033[2m" + s + "\033[0m"
+}
+
+func tcMagentaDim(s string) string {
+	return "\033[1;2;35m" + s + "\033[0m"
+}
+
+func tcGreen(s string) string {
+	return "\033[32m" + s + "\033[0m"
+}
+
+func tcBlue(s string) string {
+	return "\033[1;36m" + s + "\033[0m"
+}
+
+func tcRed(s string) string {
+	return "\033[1;31m" + s + "\033[0m"
 }

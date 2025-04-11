@@ -15,7 +15,7 @@ func main() {
 
 	am, err := loadAddonCfg(addonsCfg)
 	if err != nil {
-		fmt.Printf("error loading addons config from %v: %v\n", addonsCfg, err)
+		fmt.Println(tcRed("error loading addons config from "+addonsCfg), err)
 		return
 	}
 	// am.debugPrint()
@@ -23,13 +23,13 @@ func main() {
 
 	for _, addon := range am.Addons {
 		if err := addon.update(am.buf, am.CacheDir); err != nil {
-			addon.Logf("error updating addon: %v\n", err)
+			addon.Logf("%v %v\n", tcRed("error updating addon"), err)
 		}
 		fmt.Println("")
 	}
 
 	for addon, url := range am.UnmanagedAddons {
-		fmt.Printf("%v: %v\n", addon, url)
+		fmt.Printf("%v: %v\n", tcBlue(addon), url)
 	}
 	fmt.Println("")
 
