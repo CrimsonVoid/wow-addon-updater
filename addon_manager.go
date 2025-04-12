@@ -16,8 +16,6 @@ type AddonManager struct {
 	UpdateInfo      map[string]*AddonUpdateInfo
 	// cache data on disk for dev, omit or set to "" to skip caching
 	CacheDir string
-
-	buf *bytes.Buffer
 }
 
 func loadAddonCfg(filename string) (*AddonManager, error) {
@@ -31,7 +29,6 @@ func loadAddonCfg(filename string) (*AddonManager, error) {
 		Addons:          []*Addon{},
 		UnmanagedAddons: map[string]string{},
 		UpdateInfo:      map[string]*AddonUpdateInfo{},
-		buf:             &bytes.Buffer{},
 	}
 
 	if err = json.Unmarshal(data, &am); err != nil {
@@ -85,8 +82,13 @@ func loadAddonCfg(filename string) (*AddonManager, error) {
 }
 
 func (am *AddonManager) updateAddons() {
+	buf := &bytes.Buffer{}
+
 	for _, addon := range am.Addons {
-		if err := addon.update(am.buf, am.CacheDir); err != nil {
+		buf.Reset()
+		addon.buf, addon.cacheDir = buf, am.CacheDir
+
+		if err := addon.update(); err != nil {
 			addon.Logf("%v %v\n", tcRed("error updating addon"), err)
 		}
 		fmt.Println("")

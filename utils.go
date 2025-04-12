@@ -47,12 +47,12 @@ func cacheDownload(url string, buf *bytes.Buffer, cacheFile string) error {
 	return nil
 }
 
-func mkCacheFile(cacheDir string, m string, a ...any) string {
-	if cacheDir == "" {
+func (a *Addon) mkCacheFile(m string, args ...any) string {
+	if a.cacheDir == "" {
 		return ""
 	}
 
-	return fmt.Sprintf(cacheDir+"/"+m, a...)
+	return fmt.Sprintf(a.cacheDir+"/"+m, args...)
 }
 
 // terminal colors & styles
