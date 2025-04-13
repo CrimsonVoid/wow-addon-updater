@@ -15,7 +15,8 @@ type AddonManager struct {
 	UnmanagedAddons map[string]string
 	UpdateInfo      map[string]*AddonUpdateInfo
 	// cache data on disk for dev, omit or set to "" to skip caching
-	CacheDir string
+	CacheDir  string
+	cacheRoot *os.Root
 }
 
 func loadAddonCfg(filename string) (*AddonManager, error) {
@@ -71,10 +72,14 @@ func loadAddonCfg(filename string) (*AddonManager, error) {
 		}
 	}
 
-	// create CacheDir
+	// open cacheRoot
 	if am.CacheDir != "" {
-		if err := os.MkdirAll(am.CacheDir, 0755); err != nil {
+		if err = os.MkdirAll(am.CacheDir, 0755); err != nil {
 			return nil, fmt.Errorf("could not create cache dir: %w", err)
+		}
+
+		if am.cacheRoot, err = os.OpenRoot(am.CacheDir); err != nil {
+			return nil, fmt.Errorf("could not open cache dir: %w", err)
 		}
 	}
 
@@ -86,7 +91,7 @@ func (am *AddonManager) updateAddons() {
 
 	for _, addon := range am.Addons {
 		buf.Reset()
-		addon.buf, addon.cacheDir = buf, am.CacheDir
+		addon.buf, addon.cacheDir = buf, am.cacheRoot
 
 		if err := addon.update(); err != nil {
 			addon.Logf("%v %v\n", tcRed("error updating addon"), err)

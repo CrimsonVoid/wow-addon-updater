@@ -1,26 +1,30 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 )
 
-func cacheDownload(url string, buf *bytes.Buffer, cacheFile string) error {
+func (a *Addon) cacheDownload(url string, cacheFile string) error {
 	// cacheFile exists on disk => read from disk, write to buf
 	// cacheFile missing on disk => read from net, write to buf (& disk if cacheFile provided)
-	buf.Reset()
+	a.buf.Reset()
 
 	var rd io.Reader
-	if file, err := os.Open(cacheFile); err == nil {
-		// optimistically try reading from cacheFile
-		slog.Debug("reading from cache", "filename", cacheFile)
-		defer file.Close()
-		rd = file
-	} else {
+	switch {
+	case a.cacheDir != nil:
+		// optimistically try reading from cache
+		if file, err := a.cacheDir.Open(cacheFile); err == nil {
+			slog.Debug("reading from cache", "filename", cacheFile)
+			defer file.Close()
+			rd = file
+			break
+		}
+
+		fallthrough
+	default:
 		res, err := http.Get(url)
 		if err != nil {
 			return fmt.Errorf("error opening connection to %v: %w", url, err)
@@ -29,8 +33,8 @@ func cacheDownload(url string, buf *bytes.Buffer, cacheFile string) error {
 		rd = res.Body
 
 		// copy data to cacheFile while reading if provided and not found on disk
-		if cacheFile != "" {
-			file, err := os.Create(cacheFile)
+		if a.cacheDir != nil {
+			file, err := a.cacheDir.Create(cacheFile)
 			if err != nil {
 				return fmt.Errorf("could not create file %v: %w", file, err)
 			}
@@ -40,19 +44,11 @@ func cacheDownload(url string, buf *bytes.Buffer, cacheFile string) error {
 		}
 	}
 
-	if _, err := io.Copy(buf, rd); err != nil {
+	if _, err := io.Copy(a.buf, rd); err != nil {
 		return fmt.Errorf("error copying data: %w", err)
 	}
 
 	return nil
-}
-
-func (a *Addon) mkCacheFile(m string, args ...any) string {
-	if a.cacheDir == "" {
-		return ""
-	}
-
-	return fmt.Sprintf(a.cacheDir+"/"+m, args...)
 }
 
 // terminal colors & styles
