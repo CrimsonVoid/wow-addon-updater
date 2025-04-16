@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -166,8 +167,12 @@ func (a *Addon) extractZip() error {
 			}
 			defer file.Close()
 
-			if _, err := io.Copy(file, zipF); err != nil {
+			writer := bufio.NewWriter(file)
+			if _, err := io.Copy(writer, zipF); err != nil {
 				return fmt.Errorf("error extracting archive file %v to %v: %w", zipFile.Name, addonFilename, err)
+			}
+			if err := writer.Flush(); err != nil {
+				return fmt.Errorf("error flushing buffer for file %v: %w", addonFilename, err)
 			}
 
 			return nil
@@ -348,6 +353,6 @@ func (a *Addon) getTaggedRef() (*DownloadAsset, error) {
 }
 
 func (a *Addon) Logf(format string, args ...any) {
-	fmt.Printf("[%v%v] ", tcDim(a.projName), tcBlue(a.shortName))
+	fmt.Printf("[%v%v] ", tcDim(a.projName), tcCyan(a.shortName))
 	fmt.Printf(format, args...)
 }

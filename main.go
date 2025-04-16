@@ -5,7 +5,6 @@ import (
 )
 
 func main() {
-	// slog.SetLogLoggerLevel(slog.LevelDebug)
 	const addonsCfg = "addons.json"
 
 	defer func() {

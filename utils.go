@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 )
 
@@ -17,9 +17,8 @@ func (a *Addon) cacheDownload(url string, cacheFile string) error {
 	case a.cacheDir != nil:
 		// optimistically try reading from cache
 		if file, err := a.cacheDir.Open(cacheFile); err == nil {
-			slog.Debug("reading from cache", "filename", cacheFile)
 			defer file.Close()
-			rd = file
+			rd = bufio.NewReader(file)
 			break
 		}
 
@@ -39,8 +38,10 @@ func (a *Addon) cacheDownload(url string, cacheFile string) error {
 				return fmt.Errorf("could not create file %v: %w", file, err)
 			}
 			defer file.Close()
+			fileBuf := bufio.NewWriter(file)
+			defer fileBuf.Flush()
 
-			rd = io.TeeReader(res.Body, file)
+			rd = io.TeeReader(res.Body, fileBuf)
 		}
 	}
 
@@ -52,23 +53,24 @@ func (a *Addon) cacheDownload(url string, cacheFile string) error {
 }
 
 // terminal colors & styles
+const tcReset = "\033[0m"
 
 func tcDim(s string) string {
-	return "\033[2m" + s + "\033[0m"
+	return "\033[2m" + s + tcReset
 }
 
 func tcMagentaDim(s string) string {
-	return "\033[1;2;35m" + s + "\033[0m"
+	return "\033[1;2;35m" + s + tcReset
 }
 
 func tcGreen(s string) string {
-	return "\033[32m" + s + "\033[0m"
+	return "\033[32m" + s + tcReset
 }
 
-func tcBlue(s string) string {
-	return "\033[1;36m" + s + "\033[0m"
+func tcCyan(s string) string {
+	return "\033[1;36m" + s + tcReset
 }
 
 func tcRed(s string) string {
-	return "\033[1;31m" + s + "\033[0m"
+	return "\033[1;31m" + s + tcReset
 }
