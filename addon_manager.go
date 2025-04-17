@@ -12,7 +12,8 @@ type AddonManager struct {
 	Addons []*Addon
 	// addons that are not managed by us, typically map of urls
 	UnmanagedAddons map[string]string
-	// map of addon name to update info
+	// map of addon name to update info, only used when (de)serializing. most likely should use
+	// Addon.AddonUpdateInfo instead
 	UpdateInfo map[string]*AddonUpdateInfo
 	// cache data on disk for dev, omit or set to "" to skip caching
 	CacheDir  string `json:",omitempty"`
@@ -127,6 +128,12 @@ func (am *AddonManager) UpdateAddons() {
 }
 
 func (am *AddonManager) SaveAddonCfg(filename string) error {
+	// rebuild updateInfo since Addons might allocate new AddonUpdateInfo
+	am.UpdateInfo = make(map[string]*AddonUpdateInfo, len(am.Addons))
+	for _, addon := range am.Addons {
+		am.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
+	}
+
 	data, err := json.MarshalIndent(am, "", "    ")
 	if err != nil {
 		return fmt.Errorf("error marshalling addons: %w", err)
