@@ -12,16 +12,16 @@ func main() {
 		fmt.Scanf("h")
 	}()
 
-	am, err := loadAddonCfg(addonsCfg)
+	am, err := LoadAddonCfg(addonsCfg)
 	if err != nil {
-		fmt.Println(tcRed("error loading addons config from "+addonsCfg), err)
+		fmt.Println(tcRed("error loading addon config from "+addonsCfg), err)
 		return
 	}
-	// am.debugPrint()
+	// fmt.Println(am)
 
-	am.updateAddons()
+	am.UpdateAddons()
 
-	if err = am.saveAddonCfg(addonsCfg); err != nil {
-		fmt.Printf("error saving addon confing to %v: %v\n", addonsCfg, err)
+	if err = am.SaveAddonCfg(addonsCfg); err != nil {
+		fmt.Println(tcRed("error saving addon confing to "+addonsCfg), err)
 	}
 }

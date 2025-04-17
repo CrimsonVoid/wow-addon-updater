@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"os"
 	"strings"
 )
@@ -20,40 +19,54 @@ type AddonManager struct {
 	cacheRoot *os.Root
 }
 
-func loadAddonCfg(filename string) (*AddonManager, error) {
-	am := &AddonManager{
+func newAddonManager() *AddonManager {
+	return &AddonManager{
 		Addons:          []*Addon{},
 		UnmanagedAddons: map[string]string{},
 		UpdateInfo:      map[string]*AddonUpdateInfo{},
 	}
+}
+
+func LoadAddonCfg(filename string) (*AddonManager, error) {
+	am := newAddonManager()
 
 	// read and unmarshal json data
 	if data, err := os.ReadFile(filename); err != nil {
 		return nil, fmt.Errorf("error reading config %v: %w", filename, err)
 	} else if err = json.Unmarshal(data, &am); err != nil {
-		return nil, fmt.Errorf("error decoding json data: %w", err)
+		return nil, fmt.Errorf("error decoding json config: %w", err)
 	}
 
-	// validate and load each addon
+	if err := am.initialize(); err != nil {
+		return nil, fmt.Errorf("error loading addon manager: %w", err)
+	}
+
+	return am, nil
+}
+
+func (am *AddonManager) initialize() error {
+	// rebuild updateInfo with only currently tracked addons
+	prevUpdateInfo := am.UpdateInfo
+	am.UpdateInfo = make(map[string]*AddonUpdateInfo, len(am.Addons))
 	for _, addon := range am.Addons {
-		if err := am.loadAddon(addon); err != nil {
-			return nil, fmt.Errorf("error loading addon %v: %w", addon.Name, err)
+		if err := am.initializeAddon(addon, prevUpdateInfo[addon.Name]); err != nil {
+			return fmt.Errorf("error loading addon %v: %w", addon.Name, err)
 		}
 	}
 
 	// create cache dir if provided
 	if am.CacheDir != "" {
 		if err := os.MkdirAll(am.CacheDir, 0755); err != nil {
-			return nil, fmt.Errorf("could not create cache dir: %w", err)
+			return fmt.Errorf("could not create cache dir: %w", err)
 		} else if am.cacheRoot, err = os.OpenRoot(am.CacheDir); err != nil {
-			return nil, fmt.Errorf("could not open cache dir: %w", err)
+			return fmt.Errorf("could not open cache dir: %w", err)
 		}
 	}
 
-	return am, nil
+	return nil
 }
 
-func (am *AddonManager) loadAddon(addon *Addon) error {
+func (am *AddonManager) initializeAddon(addon *Addon, lastUpdateInfo *AddonUpdateInfo) error {
 	if addon.RelType >= GhEnd {
 		return fmt.Errorf("unknown release type for addon %v: %v", addon.Name, addon.RelType)
 	}
@@ -61,17 +74,18 @@ func (am *AddonManager) loadAddon(addon *Addon) error {
 	// update projName and shortname
 	// addon.Name = "PROJECT/ADDON"; projName, shortName = "PROJECT/", "ADDON"
 	idx := strings.LastIndexByte(addon.Name, '/')
-	if idx == -1 {
+	if idx <= 0 || idx == len(addon.Name)-1 {
 		return fmt.Errorf("addon name not formatted correctly: expected PROJECT/ADDON, found %v", addon.Name)
 	}
 	addon.projName = addon.Name[:idx+1]
 	addon.shortName = addon.Name[idx+1:]
 
-	// set AddonUpdateInfo from addonManager, creating it if not found
-	if _, ok := am.UpdateInfo[addon.Name]; !ok {
-		am.UpdateInfo[addon.Name] = &AddonUpdateInfo{}
+	// set AddonUpdateInfo, creating it if not found
+	if lastUpdateInfo == nil {
+		lastUpdateInfo = &AddonUpdateInfo{}
 	}
-	addon.AddonUpdateInfo = am.UpdateInfo[addon.Name]
+	addon.AddonUpdateInfo = lastUpdateInfo
+	am.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
 
 	// populate addon.{include,exclude}Dirs from Dirs
 	// dirs starting with '-' are excluded
@@ -92,7 +106,7 @@ func (am *AddonManager) loadAddon(addon *Addon) error {
 	return nil
 }
 
-func (am *AddonManager) updateAddons() {
+func (am *AddonManager) UpdateAddons() {
 	// in-memory buffer for downloads
 	buf := &bytes.Buffer{}
 
@@ -112,16 +126,7 @@ func (am *AddonManager) updateAddons() {
 	}
 }
 
-func (am *AddonManager) saveAddonCfg(filename string) error {
-	// delete addons in UpdateInfo that are not in Addons, most likely from previous updates
-	addonSet := map[string]bool{}
-	for _, addon := range am.Addons {
-		addonSet[addon.Name] = true
-	}
-	maps.DeleteFunc(am.UpdateInfo, func(name string, _ *AddonUpdateInfo) bool {
-		return !addonSet[name]
-	})
-
+func (am *AddonManager) SaveAddonCfg(filename string) error {
 	data, err := json.MarshalIndent(am, "", "    ")
 	if err != nil {
 		return fmt.Errorf("error marshalling addons: %w", err)
@@ -135,21 +140,28 @@ func (am *AddonManager) saveAddonCfg(filename string) error {
 	return nil
 }
 
-func (am *AddonManager) debugPrint() {
-	fmt.Println("CacheDir:", am.CacheDir)
+func (am *AddonManager) String() string {
+	buf := &strings.Builder{}
+
+	fmt.Fprintln(buf, "CacheDir:", am.CacheDir)
 
 	for _, addon := range am.Addons {
-		fmt.Printf("Name: %v%v\n", tcDim(addon.projName), tcCyan(addon.shortName))
-		fmt.Println("Dirs:", addon.Dirs)
-		fmt.Println("RelType:", addon.RelType)
-		fmt.Println("includeDirs:", addon.includeDirs)
-		fmt.Println("excludeDirs:", addon.excludeDirs)
-		fmt.Println("addonUpdateInfo:", addon.AddonUpdateInfo)
-		fmt.Println("")
+		fmt.Fprintf(buf, "%v%v\n", tcDim(addon.projName), tcCyan(addon.shortName))
+		fmt.Fprintln(buf, "  Dirs:           ", addon.Dirs)
+		fmt.Fprintln(buf, "  RelType:        ", addon.RelType)
+		fmt.Fprintln(buf, "  includeDirs:    ", addon.includeDirs)
+		fmt.Fprintln(buf, "  excludeDirs:    ", addon.excludeDirs)
+		fmt.Fprintln(buf, "  addonUpdateInfo:")
+		fmt.Fprintln(buf, "    Version:      ", addon.AddonUpdateInfo.Version)
+		fmt.Fprintln(buf, "    UpdatedOn:    ", addon.AddonUpdateInfo.UpdatedOn)
+		fmt.Fprintln(buf, "    RefSha:       ", addon.AddonUpdateInfo.RefSha)
+		fmt.Fprintln(buf, "    ExtractedDirs:", addon.AddonUpdateInfo.ExtractedDirs)
+		fmt.Fprintln(buf, "")
 	}
 
 	for addon, url := range am.UnmanagedAddons {
-		fmt.Printf("%v: %v\n", addon, url)
+		fmt.Fprintf(buf, "%v: %v\n", addon, url)
 	}
-	fmt.Println("")
+
+	return buf.String()
 }

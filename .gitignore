@@ -1,4 +1,7 @@
 cache/
 .direnv/
-addons-orig.json
 *.exe
+
+addons-orig.json
+coverage.out
+coverage.html
