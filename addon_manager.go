@@ -109,19 +109,29 @@ func (am *AddonManager) initializeAddon(addon *Addon, lastUpdateInfo *AddonUpdat
 }
 
 func (am *AddonManager) UpdateAddons() {
-	// in-memory buffer for downloads
-	buf := &bytes.Buffer{}
+	// range helper to cleanup pre/post conditions when looping over addons
+	addons := func(yield func(*Addon) bool) {
+		buf := &bytes.Buffer{}
 
-	for _, addon := range am.Addons {
-		buf.Reset()
-		addon.buf, addon.cacheDir = buf, am.cacheRoot
+		for _, addon := range am.Addons {
+			buf.Reset()
+			addon.buf, addon.cacheDir = buf, am.cacheRoot
+
+			ok := yield(addon)
+			addon.buf, addon.cacheDir = nil, nil
+			am.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
+
+			if !ok {
+				break
+			}
+		}
+	}
+
+	for addon := range addons {
 		if err := addon.update(); err != nil {
 			addon.Logf("%v %v\n", tcRed("error updating addon"), err)
 		}
-		addon.buf, addon.cacheDir = nil, nil
-		am.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
-
-		fmt.Println("")
+		fmt.Println()
 	}
 
 	for addon, url := range am.UnmanagedAddons {
