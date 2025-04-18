@@ -94,7 +94,7 @@ func TestAddonManager_initializeAddonManager(t *testing.T) {
 			testEq(t, "updateInfo length", len(i.UpdateInfo), len(e.UpdateInfo))
 			// Addon.UpdateInfo should be a pointer to AddonManager.UpdateInfo
 			for _, addon := range i.Addons {
-				testEq(t, "updateInfo ptr "+addon.Name, addon.AddonUpdateInfo, i.UpdateInfo[addon.Name])
+				testEqPtr(t, "updateInfo ptr "+addon.Name, addon.AddonUpdateInfo, i.UpdateInfo[addon.Name])
 			}
 
 			testEq(t, "CacheDir", i.CacheDir, e.CacheDir)
@@ -224,11 +224,6 @@ func TestAddonManager_initializeAddon(t *testing.T) {
 			}
 
 			testAddonEq(t, i.addon, e)
-			// Addon.UpdateInfo should be a pointer to AddonManager.UpdateInfo
-			aUI, amUI := i.addon.AddonUpdateInfo, am.UpdateInfo[i.addon.Name]
-			if !testEq(t, "updateInfo ptr", aUI, amUI) {
-				t.Errorf("updateInfo ptr mismatch: (input != expected) %p != %p", aUI, amUI)
-			}
 		})
 	}
 }

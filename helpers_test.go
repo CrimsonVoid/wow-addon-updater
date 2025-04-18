@@ -11,6 +11,14 @@ var (
 	now = time.Now()
 )
 
+func testEqPtr[T any](t *testing.T, name string, i, e *T) bool {
+	if i != e {
+		t.Errorf("%v mismatch: (input != expected) %p != %p", name, i, e)
+		return false
+	}
+	return true
+}
+
 func testEq[T comparable](t *testing.T, name string, i, e T) bool {
 	return testEqFunc(t, name, i, e, func(i, e T) bool { return i == e })
 }

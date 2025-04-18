@@ -49,10 +49,12 @@ func (am *AddonManager) initialize() error {
 	// rebuild updateInfo with only currently tracked addons
 	prevUpdateInfo := am.UpdateInfo
 	am.UpdateInfo = make(map[string]*AddonUpdateInfo, len(am.Addons))
+
 	for _, addon := range am.Addons {
 		if err := am.initializeAddon(addon, prevUpdateInfo[addon.Name]); err != nil {
 			return fmt.Errorf("error loading addon %v: %w", addon.Name, err)
 		}
+		am.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
 	}
 
 	// create cache dir if provided
@@ -86,7 +88,6 @@ func (am *AddonManager) initializeAddon(addon *Addon, lastUpdateInfo *AddonUpdat
 		lastUpdateInfo = &AddonUpdateInfo{}
 	}
 	addon.AddonUpdateInfo = lastUpdateInfo
-	am.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
 
 	// populate addon.{include,exclude}Dirs from Dirs
 	// dirs starting with '-' are excluded
@@ -118,6 +119,7 @@ func (am *AddonManager) UpdateAddons() {
 			addon.Logf("%v %v\n", tcRed("error updating addon"), err)
 		}
 		addon.buf, addon.cacheDir = nil, nil
+		am.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
 
 		fmt.Println("")
 	}
@@ -128,12 +130,6 @@ func (am *AddonManager) UpdateAddons() {
 }
 
 func (am *AddonManager) SaveAddonCfg(filename string) error {
-	// rebuild updateInfo since Addons might allocate new AddonUpdateInfo
-	am.UpdateInfo = make(map[string]*AddonUpdateInfo, len(am.Addons))
-	for _, addon := range am.Addons {
-		am.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
-	}
-
 	data, err := json.MarshalIndent(am, "", "    ")
 	if err != nil {
 		return fmt.Errorf("error marshalling addons: %w", err)
