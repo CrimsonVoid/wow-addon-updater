@@ -7,49 +7,49 @@ import (
 	"net/http"
 )
 
-func (a *Addon) cacheDownload(url string, cacheFile string) error {
+func (a *Addon) cacheDownload(url string, fileNm string) (err error) {
 	// cacheFile exists on disk => read from disk, write to buf
 	// cacheFile missing on disk => read from net, write to buf (& disk if cacheFile provided)
 	a.buf.Reset()
+	wr := (io.Writer)(a.buf)
 
-	var rd io.Reader
-	switch {
-	case a.cacheDir != nil:
+	if a.cacheDir != nil {
 		// optimistically try reading from cache
-		if file, err := a.cacheDir.Open(cacheFile); err == nil {
+		if file, err := a.cacheDir.Open(fileNm); err == nil {
 			defer file.Close()
-			rd = bufio.NewReader(file)
-			break
-		}
-
-		fallthrough
-	default:
-		res, err := http.Get(url)
-		if err != nil {
-			return fmt.Errorf("error opening connection to %v: %w", url, err)
-		}
-		defer res.Body.Close()
-		rd = res.Body
-
-		// copy data to cacheFile while reading if provided and not found on disk
-		if a.cacheDir != nil {
-			file, err := a.cacheDir.Create(cacheFile)
-			if err != nil {
-				return fmt.Errorf("could not create file %v: %w", file, err)
+			if _, err := io.Copy(a.buf, bufio.NewReader(file)); err != nil {
+				return fmt.Errorf("error reading data from cache: %w", err)
 			}
-			defer file.Close()
-			fileBuf := bufio.NewWriter(file)
-			defer fileBuf.Flush()
-
-			rd = io.TeeReader(res.Body, fileBuf)
+			return nil
 		}
+
+		// cache file not found, create it and tee writes to a.buf & cache
+		file, err := a.cacheDir.Create(fileNm)
+		if err != nil {
+			return fmt.Errorf("error creating cache file %v: %w", file, err)
+		}
+		defer file.Close()
+		bufW := bufio.NewWriter(file)
+		defer func() { err = bufW.Flush() }()
+
+		wr = io.MultiWriter(a.buf, bufW)
 	}
 
-	if _, err := io.Copy(a.buf, rd); err != nil {
+	res, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("error opening connection to %v: %w", url, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("error fetching %v: %v", url, res.Status)
+	}
+
+	// copy data to buf & cache
+	if _, err := io.Copy(wr, res.Body); err != nil {
 		return fmt.Errorf("error copying data: %w", err)
 	}
 
-	return nil
+	return
 }
 
 // terminal colors & styles
