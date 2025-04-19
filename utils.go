@@ -30,7 +30,12 @@ func (a *Addon) cacheDownload(url string, fileNm string) (err error) {
 		}
 		defer file.Close()
 		bufW := bufio.NewWriter(file)
-		defer func() { err = bufW.Flush() }()
+		defer func() {
+			// flush cache and report any error (don't overwrite err if it is already set)
+			if err2 := bufW.Flush(); err == nil && err2 != nil {
+				err = fmt.Errorf("error flushing cache file %v: %w", file, err2)
+			}
+		}()
 
 		wr = io.MultiWriter(a.buf, bufW)
 	}
