@@ -2,10 +2,24 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 )
+
+func fetchJson[T any](a *Addon, url string, fileNm string) (*T, error) {
+	var t *T
+
+	if err := a.cacheDownload(url, fileNm); err != nil {
+		return nil, fmt.Errorf("error downloading: %w", err)
+	}
+	if err := json.Unmarshal(a.buf.Bytes(), &t); err != nil {
+		return nil, fmt.Errorf("error unmarshalling: %w", err)
+	}
+
+	return t, nil
+}
 
 func (a *Addon) cacheDownload(url string, fileNm string) (err error) {
 	// cacheFile exists on disk => read from disk, write to buf

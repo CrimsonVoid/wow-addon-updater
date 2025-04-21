@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -238,10 +237,6 @@ type ghTaggedRel struct {
 	TagName string `json:"tag_name"`
 	Assets  []*downloadAsset
 }
-type releaseMetadata struct {
-	Flavor    string
-	Interface int
-}
 type releaseInfo struct {
 	Releases []struct {
 		Version  string
@@ -249,18 +244,20 @@ type releaseInfo struct {
 		Metadata []*releaseMetadata
 	}
 }
+type releaseMetadata struct {
+	Flavor    string
+	Interface int
+}
 
 func (a *Addon) getTaggedRelease() (*downloadAsset, error) {
 	const RelEndpoint = "https://api.github.com/repos/%v/releases/latest"
-	releaseManifest := func(a *downloadAsset) bool { return a.Name == "release.json" && a.ContentType == "application/json" }
+	releaseManifest := func(a *downloadAsset) bool { return a.ContentType == "application/json" && a.Name == "release.json" }
 
 	cacheFilename := fmt.Sprintf("%v-rel.json", a.shortName)
 
-	ghRelease := &ghTaggedRel{}
-	if err := a.cacheDownload(fmt.Sprintf(RelEndpoint, a.Name), cacheFilename); err != nil {
+	ghRelease, err := fetchJson[ghTaggedRel](a, fmt.Sprintf(RelEndpoint, a.Name), cacheFilename)
+	if err != nil {
 		return nil, fmt.Errorf("error fetching update info: %w", err)
-	} else if err := json.Unmarshal(a.buf.Bytes(), ghRelease); err != nil {
-		return nil, fmt.Errorf("unmarshal error for tagged release: %w", err)
 	}
 
 	addonReleases := &releaseInfo{}
@@ -268,17 +265,16 @@ func (a *Addon) getTaggedRelease() (*downloadAsset, error) {
 		relAsset := ghRelease.Assets[idx]
 		cacheRelManifest := fmt.Sprintf("%v-addonRel.json", a.shortName)
 
-		if err := a.cacheDownload(relAsset.DownloadUrl, cacheRelManifest); err != nil {
+		addonReleases, err = fetchJson[releaseInfo](a, relAsset.DownloadUrl, cacheRelManifest)
+		if err != nil {
 			return nil, fmt.Errorf("error fetching release manifest: %w", err)
-		} else if err := json.Unmarshal(a.buf.Bytes(), addonReleases); err != nil {
-			return nil, fmt.Errorf("unmarshal error for release manifest: %w", err)
 		}
 	}
 
-	return a.findReleaseAsset(ghRelease, addonReleases)
+	return a.findTaggedRel(ghRelease, addonReleases)
 }
 
-func (a *Addon) findReleaseAsset(ghRelease *ghTaggedRel, addonReleases *releaseInfo) (*downloadAsset, error) {
+func (a *Addon) findTaggedRel(ghRelease *ghTaggedRel, addonReleases *releaseInfo) (*downloadAsset, error) {
 	classicFlavors := regexp.MustCompile(`classic|bc|wrath|cata`)
 	isMainline := func(m *releaseMetadata) bool { return m.Flavor == "mainline" }
 
@@ -307,22 +303,27 @@ func (a *Addon) findReleaseAsset(ghRelease *ghTaggedRel, addonReleases *releaseI
 	return nil, fmt.Errorf("no matching asset found from release manifest")
 }
 
-func (a *Addon) getTaggedRef() (*downloadAsset, error) {
-	type ghTaggedRef struct {
-		Ref    string
-		Object struct {
-			Sha string
-		}
+type ghTaggedRef struct {
+	Ref    string
+	Object struct {
+		Sha string
 	}
+}
+
+func (a *Addon) getTaggedRef() (*downloadAsset, error) {
 	const TagEndpoint = "https://api.github.com/repos/%v/git/refs/tags"
 	cacheFilename := fmt.Sprintf("%v-ref.json", a.shortName)
-	ghRefs := []ghTaggedRef{}
 
-	if err := a.cacheDownload(fmt.Sprintf(TagEndpoint, a.Name), cacheFilename); err != nil {
-		return nil, err
-	} else if err := json.Unmarshal(a.buf.Bytes(), &ghRefs); err != nil {
-		return nil, fmt.Errorf("unmarshal error for tagged ref: %w", err)
-	} else if len(ghRefs) == 0 {
+	ghRefs, err := fetchJson[[]ghTaggedRef](a, fmt.Sprintf(TagEndpoint, a.Name), cacheFilename)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching tagged ref: %w", err)
+	}
+
+	return a.findTaggedRef(*ghRefs)
+}
+
+func (a *Addon) findTaggedRef(ghRefs []ghTaggedRef) (*downloadAsset, error) {
+	if len(ghRefs) == 0 {
 		return nil, fmt.Errorf("did not find valid ref for %v", a.Name)
 	}
 
