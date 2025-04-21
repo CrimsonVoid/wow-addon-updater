@@ -238,11 +238,12 @@ type ghTaggedRel struct {
 	Assets  []*downloadAsset
 }
 type releaseInfo struct {
-	Releases []struct {
-		Version  string
-		Filename string
-		Metadata []*releaseMetadata
-	}
+	Releases []release
+}
+type release struct {
+	Version  string
+	Filename string
+	Metadata []*releaseMetadata
 }
 type releaseMetadata struct {
 	Flavor    string
@@ -275,13 +276,14 @@ func (a *Addon) getTaggedRelease() (*downloadAsset, error) {
 }
 
 func (a *Addon) findTaggedRel(ghRelease *ghTaggedRel, addonReleases *releaseInfo) (*downloadAsset, error) {
+	// invariant: ghRelease and addonReleases will not be nil when called from getTaggedRelease
 	classicFlavors := regexp.MustCompile(`classic|bc|wrath|cata`)
 	isMainline := func(m *releaseMetadata) bool { return m.Flavor == "mainline" }
 
 	isReleaseAsset := func(a *downloadAsset) bool {
 		return a.ContentType == "application/zip" && !classicFlavors.MatchString(a.Name)
 	}
-	version := ""
+	version := ghRelease.TagName
 
 	for _, addonRelInfo := range addonReleases.Releases {
 		if slices.ContainsFunc(addonRelInfo.Metadata, isMainline) {
@@ -289,18 +291,21 @@ func (a *Addon) findTaggedRel(ghRelease *ghTaggedRel, addonReleases *releaseInfo
 				return a.ContentType == "application/zip" && a.Name == addonRelInfo.Filename
 			}
 			version = addonRelInfo.Version
+
 			break
 		}
 	}
 
-	if idx := slices.IndexFunc(ghRelease.Assets, isReleaseAsset); idx != -1 {
-		asset := ghRelease.Assets[idx]
-		asset.RelType = GhRel
-		asset.Version = version
-		return asset, nil
+	idx := slices.IndexFunc(ghRelease.Assets, isReleaseAsset)
+	if idx == -1 {
+		return nil, fmt.Errorf("no matching asset found from release manifest")
 	}
 
-	return nil, fmt.Errorf("no matching asset found from release manifest")
+	asset := ghRelease.Assets[idx]
+	asset.RelType = GhRel
+	asset.Version = version
+
+	return asset, nil
 }
 
 type ghTaggedRef struct {

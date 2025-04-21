@@ -48,3 +48,14 @@ func testAddonEq(t *testing.T, i, e *Addon) {
 	testEq(t, "Addon.RefSha"+nm, i.RefSha, e.RefSha)
 	testEqFunc(t, "Addon.ExtractedDirs"+nm, i.ExtractedDirs, e.ExtractedDirs, slices.Equal)
 }
+
+func testDownloadAssetEq(t *testing.T, i, e *downloadAsset) {
+	testEq(t, "Name", i.Name, e.Name)
+	testEq(t, "Size", i.Size, e.Size)
+	testEq(t, "DownloadUrl", i.DownloadUrl, e.DownloadUrl)
+	testEq(t, "ContentType", i.ContentType, e.ContentType)
+	testEqFunc(t, "UpdatedAt", i.UpdatedAt, e.UpdatedAt, time.Time.Equal)
+	testEq(t, "RefSha", i.RefSha, e.RefSha)
+	testEq(t, "Version", i.Version, e.Version)
+	testEq(t, "RelType", i.RelType, e.RelType)
+}
