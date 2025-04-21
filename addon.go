@@ -98,7 +98,7 @@ func (a *Addon) update() error {
 	return nil
 }
 
-func (a *Addon) hasUpdate(asset *DownloadAsset) bool {
+func (a *Addon) hasUpdate(asset *downloadAsset) bool {
 	return (asset.RelType == GhRel && a.UpdatedOn.Before(asset.UpdatedAt)) ||
 		(asset.RelType == GhTag && a.RefSha != asset.RefSha)
 }
@@ -204,7 +204,7 @@ func skipUnzip(addon *Addon, filename string) bool {
 	return len(addon.includeDirs) != 0
 }
 
-func (a *Addon) downloadZip(asset *DownloadAsset) error {
+func (a *Addon) downloadZip(asset *downloadAsset) error {
 	cacheFilename := fmt.Sprintf("%v-%v", a.shortName, asset.Name)
 	a.buf.Reset()
 	a.buf.Grow(int(asset.Size))
@@ -212,7 +212,7 @@ func (a *Addon) downloadZip(asset *DownloadAsset) error {
 	return a.cacheDownload(asset.DownloadUrl, cacheFilename)
 }
 
-type DownloadAsset struct {
+type downloadAsset struct {
 	Name        string
 	Size        int64
 	DownloadUrl string    `json:"browser_download_url"`
@@ -223,7 +223,7 @@ type DownloadAsset struct {
 	RelType     GhRelType
 }
 
-func (a *Addon) checkUpdate() (*DownloadAsset, error) {
+func (a *Addon) checkUpdate() (*downloadAsset, error) {
 	switch a.RelType {
 	case GhRel:
 		return a.getTaggedRelease()
@@ -234,88 +234,81 @@ func (a *Addon) checkUpdate() (*DownloadAsset, error) {
 	}
 }
 
-func (a *Addon) getTaggedRelease() (*DownloadAsset, error) {
-	type ReleaseMetadata struct {
-		Flavor    string
-		Interface int
+type ghTaggedRel struct {
+	TagName string `json:"tag_name"`
+	Assets  []*downloadAsset
+}
+type releaseMetadata struct {
+	Flavor    string
+	Interface int
+}
+type releaseInfo struct {
+	Releases []struct {
+		Version  string
+		Filename string
+		Metadata []*releaseMetadata
 	}
-	type ReleaseInfo struct {
-		Releases []struct {
-			Version  string
-			Filename string
-			Metadata []*ReleaseMetadata
-		}
-	}
-	type GhTaggedRel struct {
-		TagName string `json:"tag_name"`
-		Assets  []*DownloadAsset
-	}
+}
 
+func (a *Addon) getTaggedRelease() (*downloadAsset, error) {
 	const RelEndpoint = "https://api.github.com/repos/%v/releases/latest"
-	classicFlavors := regexp.MustCompile(`classic|bc|wrath|cata`)
-	isMainline := func(m *ReleaseMetadata) bool { return m.Flavor == "mainline" }
-	releaseManifest := func(a *DownloadAsset) bool { return a.Name == "release.json" && a.ContentType == "application/json" }
+	releaseManifest := func(a *downloadAsset) bool { return a.Name == "release.json" && a.ContentType == "application/json" }
+
 	cacheFilename := fmt.Sprintf("%v-rel.json", a.shortName)
 
-	ghRelease := GhTaggedRel{}
+	ghRelease := &ghTaggedRel{}
 	if err := a.cacheDownload(fmt.Sprintf(RelEndpoint, a.Name), cacheFilename); err != nil {
 		return nil, fmt.Errorf("error fetching update info: %w", err)
-	} else if err := json.Unmarshal(a.buf.Bytes(), &ghRelease); err != nil {
+	} else if err := json.Unmarshal(a.buf.Bytes(), ghRelease); err != nil {
 		return nil, fmt.Errorf("unmarshal error for tagged release: %w", err)
 	}
 
-	// check for release.json in assets
-	idx := slices.IndexFunc(ghRelease.Assets, releaseManifest)
-	if idx == -1 {
-		// release.json not found, fallback to any zip in assets
-		for _, asset := range ghRelease.Assets {
-			if asset.ContentType != "application/zip" || classicFlavors.MatchString(asset.Name) {
-				continue
-			}
-			asset.Version = ghRelease.TagName
-			asset.RelType = GhRel
+	addonReleases := &releaseInfo{}
+	if idx := slices.IndexFunc(ghRelease.Assets, releaseManifest); idx != -1 {
+		relAsset := ghRelease.Assets[idx]
+		cacheRelManifest := fmt.Sprintf("%v-addonRel.json", a.shortName)
 
-			return asset, nil
+		if err := a.cacheDownload(relAsset.DownloadUrl, cacheRelManifest); err != nil {
+			return nil, fmt.Errorf("error fetching release manifest: %w", err)
+		} else if err := json.Unmarshal(a.buf.Bytes(), addonReleases); err != nil {
+			return nil, fmt.Errorf("unmarshal error for release manifest: %w", err)
 		}
-
-		return nil, fmt.Errorf("no valid asset found")
 	}
 
-	// release.json found in assets
-	relAsset := ghRelease.Assets[idx]
-	cacheRelManifest := fmt.Sprintf("%v-addonRel.json", a.shortName)
-
-	addonReleases := ReleaseInfo{}
-	if err := a.cacheDownload(relAsset.DownloadUrl, cacheRelManifest); err != nil {
-		return nil, fmt.Errorf("error fetching release manifest: %w", err)
-	} else if err := json.Unmarshal(a.buf.Bytes(), &addonReleases); err != nil {
-		return nil, fmt.Errorf("unmarshal error for release manifest: %w", err)
-	}
-
-	// find mainline addon releaseInfo
-	// get asset from github assets where Filenames match (releaseInfo.Filename == asset.Name)
-	for _, rel := range addonReleases.Releases {
-		// todo: check interface version as well?
-		if !slices.ContainsFunc(rel.Metadata, isMainline) {
-			continue
-		}
-
-		isRelAsset := func(a *DownloadAsset) bool { return a.Name == rel.Filename }
-		if idx := slices.IndexFunc(ghRelease.Assets, isRelAsset); idx != -1 {
-			asset := ghRelease.Assets[idx]
-			asset.RelType = GhRel
-			asset.Version = rel.Version
-			return asset, nil
-		}
-
-		return nil, fmt.Errorf("no matching asset found from release manifest")
-	}
-
-	return nil, fmt.Errorf("no valid release found")
+	return a.findReleaseAsset(ghRelease, addonReleases)
 }
 
-func (a *Addon) getTaggedRef() (*DownloadAsset, error) {
-	type GhTaggedRef struct {
+func (a *Addon) findReleaseAsset(ghRelease *ghTaggedRel, addonReleases *releaseInfo) (*downloadAsset, error) {
+	classicFlavors := regexp.MustCompile(`classic|bc|wrath|cata`)
+	isMainline := func(m *releaseMetadata) bool { return m.Flavor == "mainline" }
+
+	isReleaseAsset := func(a *downloadAsset) bool {
+		return a.ContentType == "application/zip" && !classicFlavors.MatchString(a.Name)
+	}
+	version := ""
+
+	for _, addonRelInfo := range addonReleases.Releases {
+		if slices.ContainsFunc(addonRelInfo.Metadata, isMainline) {
+			isReleaseAsset = func(a *downloadAsset) bool {
+				return a.ContentType == "application/zip" && a.Name == addonRelInfo.Filename
+			}
+			version = addonRelInfo.Version
+			break
+		}
+	}
+
+	if idx := slices.IndexFunc(ghRelease.Assets, isReleaseAsset); idx != -1 {
+		asset := ghRelease.Assets[idx]
+		asset.RelType = GhRel
+		asset.Version = version
+		return asset, nil
+	}
+
+	return nil, fmt.Errorf("no matching asset found from release manifest")
+}
+
+func (a *Addon) getTaggedRef() (*downloadAsset, error) {
+	type ghTaggedRef struct {
 		Ref    string
 		Object struct {
 			Sha string
@@ -323,7 +316,7 @@ func (a *Addon) getTaggedRef() (*DownloadAsset, error) {
 	}
 	const TagEndpoint = "https://api.github.com/repos/%v/git/refs/tags"
 	cacheFilename := fmt.Sprintf("%v-ref.json", a.shortName)
-	ghRefs := []GhTaggedRef{}
+	ghRefs := []ghTaggedRef{}
 
 	if err := a.cacheDownload(fmt.Sprintf(TagEndpoint, a.Name), cacheFilename); err != nil {
 		return nil, err
@@ -338,7 +331,7 @@ func (a *Addon) getTaggedRef() (*DownloadAsset, error) {
 
 	ref := ghRefs[len(ghRefs)-1]
 	name := ref.Ref[strings.LastIndexByte(ref.Ref, '/')+1:] + ".zip"
-	asset := &DownloadAsset{
+	asset := &downloadAsset{
 		Name:        name,
 		Size:        0,
 		DownloadUrl: fmt.Sprintf("https://github.com/%v/archive/%v.zip", a.Name, ref.Ref),
