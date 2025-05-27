@@ -64,7 +64,7 @@ func (a *Addon) update() error {
 		return tcDim(ref)
 	}
 
-	a.Logf("checking for update (last update: %v on %v)\n", tcGreen(a.Version), getUpdateInfo(a.UpdatedOn, a.RefSha))
+	a.Logf("checking for update (%v on %v)\n", tcGreen(a.Version), getUpdateInfo(a.UpdatedOn, a.RefSha))
 	asset, err := a.checkUpdate()
 	if err != nil {
 		return fmt.Errorf("could not find update data for %v: %w", a.shortName, err)
@@ -72,14 +72,14 @@ func (a *Addon) update() error {
 
 	updateInfo := getUpdateInfo(asset.UpdatedAt, asset.RefSha)
 	if !a.hasUpdate(asset) {
-		a.Logf("no update found (%v on %v)\n", tcGreen(asset.Version), updateInfo)
+		a.Logf("no update found     (%v on %v)\n", tcGreen(asset.Version), updateInfo)
 		return nil
 	} else if a.Skip {
-		a.Logf("skipping update (%v on %v)\n", tcGreen(asset.Version), updateInfo)
+		a.Logf("skipping update     (%v on %v)\n", tcGreen(asset.Version), updateInfo)
 		return nil
 	}
 
-	a.Logf("downloading update %v (%v on %v)\n", asset.Name, tcGreen(asset.Version), updateInfo)
+	a.Logf("downloading update  (%v on %v) %v\n", tcGreen(asset.Version), updateInfo, asset.Name)
 	if err = a.downloadZip(asset); err != nil {
 		return fmt.Errorf("unable to download update for %v: %w", a.shortName, err)
 	}
