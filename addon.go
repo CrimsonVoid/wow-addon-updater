@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -39,10 +41,9 @@ type Addon struct {
 	includeDirs, excludeDirs []string
 	// Name, projName, shortName = PROJECT/ADDON, PROJECT/, ADDON
 	projName, shortName string
-	// internal buffer for io
-	buf *bytes.Buffer
-	// AddonManager.CacheDir
-	cacheDir *os.Root
+
+	// shared/externally managed state
+	*addonSharedState
 }
 
 type AddonUpdateInfo struct {
@@ -56,7 +57,25 @@ type AddonUpdateInfo struct {
 	ExtractedDirs []string
 }
 
-func (a *Addon) update() error {
+type addonSharedState struct {
+	// internal buffer for io
+	buf *bytes.Buffer
+	// AddonManager.CacheDir
+	cacheDir *os.Root
+	// net and disk workers
+	netTasks, diskTasks chan<- func()
+	logs                chan<- string
+}
+
+type addonUpdateStatus struct {
+	addon    *Addon
+	err      error
+	execTime time.Duration
+}
+
+func (a *Addon) update() *addonUpdateStatus {
+	status := &addonUpdateStatus{addon: a}
+
 	getUpdateInfo := func(t time.Time, ref string) string {
 		if a.RelType == GhRel {
 			return tcDim(t.Local().Format("Jan 2, 2006"))
@@ -67,26 +86,29 @@ func (a *Addon) update() error {
 	a.Logf("checking for update (%v on %v)\n", tcGreen(a.Version), getUpdateInfo(a.UpdatedOn, a.RefSha))
 	asset, err := a.checkUpdate()
 	if err != nil {
-		return fmt.Errorf("could not find update data for %v: %w", a.shortName, err)
+		status.err = a.Errorf("could not find update data for %v: %w", a.shortName, err)
+		return status
 	}
 
 	updateInfo := getUpdateInfo(asset.UpdatedAt, asset.RefSha)
 	if !a.hasUpdate(asset) {
 		a.Logf("no update found     (%v on %v)\n", tcGreen(asset.Version), updateInfo)
-		return nil
+		return status
 	} else if a.Skip {
 		a.Logf("skipping update     (%v on %v)\n", tcGreen(asset.Version), updateInfo)
-		return nil
+		return status
 	}
 
 	a.Logf("downloading update  (%v on %v) %v\n", tcGreen(asset.Version), updateInfo, asset.Name)
 	if err = a.downloadZip(asset); err != nil {
-		return fmt.Errorf("unable to download update for %v: %w", a.shortName, err)
+		status.err = a.Errorf("unable to download update for %v: %w", a.shortName, err)
+		return status
 	}
 
 	a.Logf("unzipping\n")
 	if err = a.extractZip(); err != nil {
-		return fmt.Errorf("error extracting update for %v: %w", a.shortName, err)
+		status.err = a.Errorf("error extracting update for %v: %w", a.shortName, err)
+		return status
 	}
 	a.Logf("extracted %v\n", tcMagentaDim(fmt.Sprint(a.ExtractedDirs)))
 
@@ -94,7 +116,7 @@ func (a *Addon) update() error {
 	a.UpdatedOn = asset.UpdatedAt
 	a.RefSha = asset.RefSha
 
-	return nil
+	return status
 }
 
 func (a *Addon) hasUpdate(asset *downloadAsset) bool {
@@ -149,37 +171,53 @@ func (a *Addon) extractZip() error {
 		}
 	}
 
+	unzipErr := &atomic.Bool{}
+	wg := &sync.WaitGroup{}
+	wg.Add(len(extractFiles))
+
 	// extract zip files
+	// todo: check zip is thread safe
 	for _, zipFile := range extractFiles {
-		// use a func here to simplify defered file cleanup
-		err := func() error {
+		if unzipErr.Load() {
+			wg.Done()
+			continue
+		}
+
+		unzipFile := func() bool {
 			zipF, err := zipFile.Open()
 			if err != nil {
-				return fmt.Errorf("error opening file %v: %w", zipFile.Name, err)
+				return false
 			}
 			defer zipF.Close()
 
 			addonFilename := addonsDir + zipFile.Name
 			file, err := os.OpenFile(addonFilename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, zipFile.Mode())
 			if err != nil {
-				return fmt.Errorf("error opening file %v: %w", addonFilename, err)
+				return false
 			}
 			defer file.Close()
 
 			writer := bufio.NewWriter(file)
 			if _, err := io.Copy(writer, zipF); err != nil {
-				return fmt.Errorf("error extracting archive file %v to %v: %w", zipFile.Name, addonFilename, err)
+				return false
 			}
 			if err := writer.Flush(); err != nil {
-				return fmt.Errorf("error flushing buffer for file %v: %w", addonFilename, err)
+				return false
 			}
 
-			return nil
-		}()
-
-		if err != nil {
-			return err
+			return true
 		}
+		a.diskTasks <- func() {
+			defer wg.Done()
+			if !unzipFile() {
+				unzipErr.Store(true)
+			}
+		}
+	}
+	wg.Wait()
+
+	if unzipErr.Load() {
+		return fmt.Errorf("error unzipping archive")
 	}
 
 	return nil
@@ -352,6 +390,14 @@ func (a *Addon) findTaggedRef(ghRefs []ghTaggedRef) (*downloadAsset, error) {
 }
 
 func (a *Addon) Logf(format string, args ...any) {
-	fmt.Printf("[%v%v] ", tcDim(a.projName), tcCyan(a.shortName))
-	fmt.Printf(format, args...)
+	args = append([]any{tcDim(a.projName), tcCyan(a.shortName)}, args...)
+	msg := fmt.Sprintf("[%v%v] "+format, args...)
+	a.logs <- msg
+}
+
+func (a *Addon) Errorf(format string, args ...any) error {
+	err := fmt.Errorf(format, args...)
+	a.Logf("%v %v\n", tcRed("error updating addon"), err)
+
+	return err
 }

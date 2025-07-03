@@ -6,6 +6,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"time"
+)
+
+const (
+	DefaultNetTasks  = 2
+	DefaultDiskTasks = 32
 )
 
 type AddonManager struct {
@@ -15,6 +22,12 @@ type AddonManager struct {
 	// map of addon name to update info, only used when (de)serializing. most likely should use
 	// Addon.AddonUpdateInfo instead
 	UpdateInfo map[string]*AddonUpdateInfo
+	// number of threads to use for network and disk io tasks. (default: 2 and 128 respectively)
+	// this is an advanved option, use with care
+	NetTasksCfg  int `json:"NetTasks,omitempty"`
+	DiskTasksCfg int `json:"DiskTasks,omitempty"`
+	// copy of NetTasks and DiskTasks, keeping the original values when saving config
+	netTasks, diskTasks int
 	// cache data on disk for dev, omit or set to "" to skip caching
 	CacheDir  string `json:",omitempty"`
 	cacheRoot *os.Root
@@ -51,10 +64,21 @@ func (am *AddonManager) initialize() error {
 	am.UpdateInfo = make(map[string]*AddonUpdateInfo, len(am.Addons))
 
 	for _, addon := range am.Addons {
+		if _, ok := am.UpdateInfo[addon.Name]; ok {
+			return fmt.Errorf("duplicate addon found: %v", addon.Name)
+		}
 		if err := am.initializeAddon(addon, prevUpdateInfo[addon.Name]); err != nil {
 			return fmt.Errorf("error loading addon %v: %w", addon.Name, err)
 		}
 		am.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
+	}
+
+	am.netTasks, am.diskTasks = am.NetTasksCfg, am.DiskTasksCfg
+	if am.NetTasksCfg <= 0 {
+		am.NetTasksCfg, am.netTasks = 0, DefaultNetTasks
+	}
+	if am.DiskTasksCfg <= 0 {
+		am.DiskTasksCfg, am.diskTasks = 0, DefaultDiskTasks
 	}
 
 	// create cache dir if provided
@@ -109,34 +133,64 @@ func (am *AddonManager) initializeAddon(addon *Addon, lastUpdateInfo *AddonUpdat
 }
 
 func (am *AddonManager) UpdateAddons() {
-	// range helper to cleanup pre/post conditions when looping over addons
-	addons := func(yield func(*Addon) bool) {
-		buf := &bytes.Buffer{}
+	netTasks, netCancel := spawnTaskPool(am.netTasks, am.netTasks)
+	defer netCancel()
+	diskTasks, diskCancel := spawnTaskPool(am.diskTasks, 12)
+	defer diskCancel()
+	updateTasks, updateRes, updateCancel := spawnTaskResPool[*addonUpdateStatus](am.netTasks*2, len(am.Addons))
+	defer updateCancel()
 
-		for _, addon := range am.Addons {
-			buf.Reset()
-			addon.buf, addon.cacheDir = buf, am.cacheRoot
+	bufPool := sync.Pool{New: func() any { return &bytes.Buffer{} }}
+	logsCh := make(chan chan string, len(am.Addons))
 
-			ok := yield(addon)
-			addon.buf, addon.cacheDir = nil, nil
-			am.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
+	start := time.Now()
+	for _, addon := range am.Addons {
+		logs := make(chan string, 8)
+		logsCh <- logs
 
-			if !ok {
-				break
+		updateTasks <- func() *addonUpdateStatus {
+			defer close(logs)
+			buf := bufPool.Get().(*bytes.Buffer)
+			defer func() { buf.Reset(); bufPool.Put(buf) }()
+			addon.addonSharedState = &addonSharedState{buf, am.cacheRoot, netTasks, diskTasks, logs}
+			defer func() { addon.addonSharedState = nil }()
+
+			start := time.Now()
+			status := addon.update()
+			status.execTime = time.Since(start)
+			// addon.Logf("updated in %v\n", status.execTime)
+			return status
+		}
+	}
+	close(updateTasks)
+	close(logsCh)
+
+	logTasksWg := &sync.WaitGroup{}
+	logTasksWg.Add(1)
+	go func() {
+		defer logTasksWg.Done()
+		for logCh := range logsCh {
+			for log := range logCh {
+				fmt.Print(log)
 			}
+			fmt.Println()
 		}
-	}
+	}()
 
-	for addon := range addons {
-		if err := addon.update(); err != nil {
-			addon.Logf("%v %v\n", tcRed("error updating addon"), err)
-		}
-		fmt.Println()
+	addonExecSum := time.Duration(0)
+	for status := range updateRes {
+		am.UpdateInfo[status.addon.Name] = status.addon.AddonUpdateInfo
+		addonExecSum += status.execTime
 	}
+	execTime := time.Since(start)
+	logTasksWg.Wait()
 
 	for addon, url := range am.UnmanagedAddons {
 		fmt.Printf("%v: %v\n", tcCyan(addon), url)
 	}
+	fmt.Println()
+
+	fmt.Printf("updated addons in %v (total: %v)\n", execTime, addonExecSum)
 }
 
 func (am *AddonManager) SaveAddonCfg(filename string) error {

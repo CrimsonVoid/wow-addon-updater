@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 )
 
 func fetchJson[T any](a *Addon, url string, fileNm string) (*T, error) {
@@ -22,6 +23,18 @@ func fetchJson[T any](a *Addon, url string, fileNm string) (*T, error) {
 }
 
 func (a *Addon) cacheDownload(url string, fileNm string) (err error) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	a.netTasks <- func() {
+		defer wg.Done()
+		err = a.cacheDownloadTask(url, fileNm)
+	}
+	wg.Wait()
+
+	return err
+}
+
+func (a *Addon) cacheDownloadTask(url string, fileNm string) (err error) {
 	// cacheFile exists on disk => read from disk, write to buf
 	// cacheFile missing on disk => read from net, write to buf (& disk if cacheFile provided)
 	a.buf.Reset()
