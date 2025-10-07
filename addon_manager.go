@@ -52,7 +52,7 @@ func LoadAddonCfg(filename string) (*AddonManager, error) {
 	}
 
 	if err := am.initialize(); err != nil {
-		return nil, fmt.Errorf("error loading addon manager: %w", err)
+		return am, fmt.Errorf("error loading addon manager: %w", err)
 	}
 
 	return am, nil

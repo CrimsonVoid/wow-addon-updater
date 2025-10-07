@@ -13,7 +13,8 @@ func main() {
 
 	defer func() {
 		fmt.Println("\npress any key to exit...")
-		if am != nil && am.CacheDir == "" { // dont wait in dev mode
+		devMode := am != nil && am.CacheDir != "" // cacheDir is usually only set during development, use it as a proxy for dev
+		if err != nil && !devMode {               // dont wait in dev mode
 			fmt.Scanf("h")
 		}
 	}()
