@@ -5,6 +5,16 @@ import (
 )
 
 func main() {
+	am, err := loadAddonManagerCfg("addons.json")
+	if err != nil {
+		panic(err)
+	}
+
+	// am.cfg.print()
+	am.print()
+}
+
+func main2() {
 	var (
 		am        *AddonManager
 		err       error

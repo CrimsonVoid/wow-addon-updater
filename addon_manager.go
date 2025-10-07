@@ -10,11 +10,6 @@ import (
 	"time"
 )
 
-const (
-	DefaultNetTasks  = 2
-	DefaultDiskTasks = 32
-)
-
 type AddonManager struct {
 	Addons []*Addon
 	// addons that are not managed by us, typically map of urls

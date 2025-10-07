@@ -1,19 +1,44 @@
 {
+    "Flavors": {
+        "modern": "./_retail_",
+        "classicTW": "./_classic_"
+    },
     "Addons": [
         {
             "Name": "BigWigsMods/BigWigs",
-            "Dirs": [
-                "-BigWigs_KhazAlgar/",
-                "-BigWigs_NerubarPalace/"
-            ]
+            "Dirs": {
+                "all": [
+                    "BigWigs",
+                    "BigWigs_Core",
+                    "BigWigs_Options",
+                    "BigWigs_Plugins"
+                ],
+                "modern": [
+                    "BigWigs_LiberationOfUndermine",
+                    "BigWigs_ManaforgeOmega"
+                ]
+            }
+        },
+        {
+            "Name": "BigWigsMods/BigWigs_MistsOfPandaria",
+            "Dirs": {
+                "mop": []
+            }
         },
         {
             "Name": "BigWigsMods/LittleWigs",
-            "Dirs": [
-                "LittleWigs/",
-                "LittleWigs_Shadowlands/",
-                "LittleWigs_BattleForAzeroth/"
-            ]
+            "Dirs": {
+                "all": [
+                    "LittleWigs/"
+                ],
+                "modern": [
+                    "LittleWigs_Shadowlands/",
+                    "LittleWigs_BattleForAzeroth/"
+                ],
+                "mop": [
+                    "LittleWigs_MistsOfPandaria/"
+                ]
+            }
         },
         {
             "Name": "WeakAuras/WeakAuras2",
@@ -32,6 +57,80 @@
     ],
     "UnmanagedAddons": {
         "addonA": "https://example.com/wow/addonA"
+    },
+    "UpdateInfo": {
+        "BigWigsMods/BigWigs": {
+            "modern": {
+                "Version": "v390.3",
+                "UpdatedOn": "2025-06-27T01:39:24Z",
+                "ExtractedDirs": [
+                    "BigWigs",
+                    "BigWigs_Core",
+                    "BigWigs_Options",
+                    "BigWigs_Plugins",
+                    "BigWigs_LiberationOfUndermine",
+                    "BigWigs_ManaforgeOmega"
+                ]
+            },
+            "mop": {
+                "Version": "v390.3",
+                "UpdatedOn": "2025-06-27T01:39:24Z",
+                "ExtractedDirs": [
+                    "BigWigs",
+                    "BigWigs_Core",
+                    "BigWigs_Options",
+                    "BigWigs_Plugins"
+                ]
+            }
+        },
+        "BigWigsMods/LittleWigs": {
+            "modern": {
+                "Version": "v11.1.56",
+                "UpdatedOn": "2025-06-24T22:24:50Z",
+                "ExtractedDirs": [
+                    "LittleWigs",
+                    "LittleWigs_BattleForAzeroth",
+                    "LittleWigs_Shadowlands"
+                ]
+            }
+        },
+        "WeakAuras/WeakAuras2": {
+            "modern": {
+                "UpdatedOn": "0001-01-01T00:00:00Z",
+                "ExtractedDirs": null
+            }
+        },
+        "kesava-wow/kuinameplates2": {
+            "modern": {
+                "Version": "2.29.18",
+                "UpdatedOn": "2024-07-22T22:05:25Z",
+                "ExtractedDirs": [
+                    "Kui_Nameplates",
+                    "Kui_Media",
+                    "Kui_Nameplates_Core",
+                    "Kui_Nameplates_Core_Config"
+                ]
+            }
+        },
+        "kesava-wow/kuispelllistconfig": {
+            "modern": {
+                "Version": "31.zip",
+                "UpdatedOn": "0001-01-01T00:00:00Z",
+                "RefSha": "refs/tags/31",
+                "ExtractedDirs": [
+                    "kuispelllistconfig-31"
+                ]
+            }
+        },
+        "rljohn/kuinameplates-target-helper": {
+            "modern": {
+                "Version": "v1.5.14",
+                "UpdatedOn": "2025-03-03T02:53:49Z",
+                "ExtractedDirs": [
+                    "Kui_Nameplates_TargetHelper"
+                ]
+            }
+        }
     },
     "CacheDir": "cache"
 }
