@@ -18,7 +18,7 @@ const (
 type AddonManager struct {
 	Addons []*Addon
 	// addons that are not managed by us, typically map of urls
-	UnmanagedAddons map[string]string
+	UnmanagedAddons []string
 	// map of addon name to update info, only used when (de)serializing. most likely should use
 	// Addon.AddonUpdateInfo instead
 	UpdateInfo map[string]*AddonUpdateInfo
@@ -36,7 +36,7 @@ type AddonManager struct {
 func newAddonManager() *AddonManager {
 	return &AddonManager{
 		Addons:          []*Addon{},
-		UnmanagedAddons: map[string]string{},
+		UnmanagedAddons: []string{},
 		UpdateInfo:      map[string]*AddonUpdateInfo{},
 	}
 }
@@ -97,6 +97,12 @@ func (am *AddonManager) initializeAddon(addon *Addon, lastUpdateInfo *AddonUpdat
 	if addon.RelType >= GhEnd {
 		return fmt.Errorf("unknown release type for addon %v: %v", addon.Name, addon.RelType)
 	}
+
+	// // convenience to skip addons with a leading -, ie "-PROJECT/ADDON" is skipped
+	// if addon.Name[0] == '-' {
+	// 	addon.Skip = true
+	// 	addon.Name = addon.Name[1:]
+	// }
 
 	// update projName and shortname
 	// addon.Name = "PROJECT/ADDON"; projName, shortName = "PROJECT/", "ADDON"
@@ -185,8 +191,16 @@ func (am *AddonManager) UpdateAddons() {
 	execTime := time.Since(start)
 	logTasksWg.Wait()
 
-	for addon, url := range am.UnmanagedAddons {
-		fmt.Printf("%v: %v\n", tcCyan(addon), url)
+	fmt.Printf("[%v]\n", tcDim("Unmanaged Addons"))
+	for _, addon := range am.UnmanagedAddons {
+		// https://example.com/wow/addonA => url, name = "https://example.com/wow", "addonA"
+		idx := strings.LastIndexByte(addon, '/')
+		if idx == -1 {
+			idx = len(addon)
+		}
+		url, name := addon[:idx], addon[idx+1:]
+
+		fmt.Printf("%v/%v\n", url, tcCyan(name))
 	}
 	fmt.Println()
 

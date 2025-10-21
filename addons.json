@@ -30,8 +30,8 @@
             "RelType": 1
         }
     ],
-    "UnmanagedAddons": {
-        "addonA": "https://example.com/wow/addonA"
-    },
+    "UnmanagedAddons": [
+        "https://example.com/wow/addonA"
+    ],
     "CacheDir": "cache"
 }
