@@ -1,0 +1,24 @@
+{
+    "name": "WoW Addon Updater",
+    "image": "mcr.microsoft.com/devcontainers/go:1.25",
+    "customizations": {
+        // "vscode": {
+        //     "extensions": [
+        //         "golang.go"
+        //     ],
+        //     "settings": {
+        //         "go.toolsManagement.checkForUpdates": "local",
+        //         "go.useLanguageServer": true,
+        //         "go.gopath": "/go"
+        //     }
+        // }
+    },
+    "features": {
+        // "ghcr.io/devcontainers/features/git:1": {},
+        // "ghcr.io/devcontainers-extra/features/homebrew-package:1": {}
+    },
+    "mounts": [
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached,readonly"
+    ],
+    "remoteUser": "vscode"
+}
