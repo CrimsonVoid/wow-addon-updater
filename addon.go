@@ -15,46 +15,20 @@ import (
 	"time"
 )
 
-type GhRelType uint8
-
-const (
-	GhRel = iota
-	GhTag
-	GhEnd // this should always be the last variant
-)
-
 type Addon struct {
-	// addon name from github, expected format PROJECT/ADDON
-	Name string
-	// top-level dirs to extract. empty list will extract everything except for excluded folders.
-	// folders starting with '-' will be excluded, takes priority over included dirs
-	Dirs []string `json:",omitempty"`
-	// 0|GhRel = github release (default); 1|GhTag = tagged commit
-	RelType GhRelType `json:",omitempty"`
-	// skip updating this addon
-	Skip bool `json:",omitempty"`
+	*AddonCfg
+	*AddonUpdateInfo
 
-	// reference to AddonManager.UpdateInfo[Name]
-	*AddonUpdateInfo `json:"-"`
 	// top-level dirs to allow or skip extracting.  exclusions take prio over includeDirs if the
 	// same folder is listed in both
-	includeDirs, excludeDirs []string
-	// Name, projName, shortName = PROJECT/ADDON, PROJECT/, ADDON
+	excludeDirs, includeDirs []string
+	// skip updating this addon
+	skip bool
+	// Name, projName, shortName = Project/Addon, Project/, Addon
 	projName, shortName string
 
 	// shared/externally managed state
 	*addonSharedState
-}
-
-type AddonUpdateInfo struct {
-	// addon version from release.json if found or filename
-	Version string `json:",omitempty"`
-	// when addon was last updated (exclusive w/ RefSha)
-	UpdatedOn time.Time
-	// sha hash of latest tagged reference (exclusive w/ UpdatedAt)
-	RefSha string `json:",omitempty"`
-	// list of folders managed by us, deleted before extracting update
-	ExtractedDirs []string
 }
 
 type addonSharedState struct {
@@ -77,7 +51,7 @@ func (a *Addon) update() *addonUpdateStatus {
 	status := &addonUpdateStatus{addon: a}
 
 	getUpdateInfo := func(t time.Time, ref string) string {
-		if a.RelType == GhRel {
+		if a.RelType == GhRelease {
 			return tcDim(t.Local().Format("Jan 2, 2006"))
 		}
 		return tcDim(ref)
@@ -94,7 +68,8 @@ func (a *Addon) update() *addonUpdateStatus {
 	if !a.hasUpdate(asset) {
 		a.Logf("no update found     (%v on %v)\n", tcGreen(asset.Version), updateInfo)
 		return status
-	} else if a.Skip {
+	} else if a.skip {
+		// check if an update is available even if skipping
 		a.Logf("skipping update     (%v on %v)\n", tcGreen(asset.Version), updateInfo)
 		return status
 	}
@@ -120,7 +95,7 @@ func (a *Addon) update() *addonUpdateStatus {
 }
 
 func (a *Addon) hasUpdate(asset *downloadAsset) bool {
-	return (asset.RelType == GhRel && a.UpdatedOn.Before(asset.UpdatedAt)) ||
+	return (asset.RelType == GhRelease && a.UpdatedOn.Before(asset.UpdatedAt)) ||
 		(asset.RelType == GhTag && a.RefSha != asset.RefSha)
 }
 
@@ -257,12 +232,12 @@ type downloadAsset struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 	RefSha      string
 	Version     string
-	RelType     GhRelType
+	RelType     GhAssetType
 }
 
 func (a *Addon) checkUpdate() (*downloadAsset, error) {
 	switch a.RelType {
-	case GhRel:
+	case GhRelease:
 		return a.getTaggedRelease()
 	case GhTag:
 		return a.getTaggedRef()
@@ -340,7 +315,7 @@ func (a *Addon) findTaggedRel(ghRelease *ghTaggedRel, addonReleases *releaseInfo
 	}
 
 	asset := ghRelease.Assets[idx]
-	asset.RelType = GhRel
+	asset.RelType = GhRelease
 	asset.Version = version
 
 	return asset, nil

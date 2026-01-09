@@ -5,145 +5,37 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 )
 
-const (
-	DefaultNetTasks  = 2
-	DefaultDiskTasks = 32
-)
-
 type AddonManager struct {
 	Addons []*Addon
-	// addons that are not managed by us, typically map of urls
+	// addons that are not managed by us, typically a list of urls
 	UnmanagedAddons []string
-	// map of addon name to update info, only used when (de)serializing. most likely should use
-	// Addon.AddonUpdateInfo instead
-	UpdateInfo map[string]*AddonUpdateInfo
-	// number of threads to use for network and disk io tasks. (default: 2 and 128 respectively)
-	// this is an advanved option, use with care
-	NetTasksCfg  int `json:"NetTasks,omitempty"`
-	DiskTasksCfg int `json:"DiskTasks,omitempty"`
-	// copy of NetTasks and DiskTasks, keeping the original values when saving config
-	netTasks, diskTasks int
+
+	// number of threads to use for network and disk io tasks
+	NetTasks, DiskTasks int
 	// cache data on disk for dev, omit or set to "" to skip caching
-	CacheDir  string `json:",omitempty"`
-	cacheRoot *os.Root
-}
+	CacheDir *os.Root
 
-func newAddonManager() *AddonManager {
-	return &AddonManager{
-		Addons:          []*Addon{},
-		UnmanagedAddons: []string{},
-		UpdateInfo:      map[string]*AddonUpdateInfo{},
+	// vars from original config, used when saving when vars used at runtime might differ from values
+	// specified in configs (ie. diskTasks set to 0 in config would load as DefaultDiskTasks, but we
+	// should save them back as 0)
+	cfgVars struct {
+		diskTasks, netTasks int
+		cacheDir            string
 	}
-}
-
-func LoadAddonCfg(filename string) (*AddonManager, error) {
-	am := newAddonManager()
-
-	// read and unmarshal json data
-	if data, err := os.ReadFile(filename); err != nil {
-		return nil, fmt.Errorf("error reading config %v: %w", filename, err)
-	} else if err = json.Unmarshal(data, &am); err != nil {
-		return nil, fmt.Errorf("error decoding json config: %w", err)
-	}
-
-	if err := am.initialize(); err != nil {
-		return am, fmt.Errorf("error loading addon manager: %w", err)
-	}
-
-	return am, nil
-}
-
-func (am *AddonManager) initialize() error {
-	// rebuild updateInfo with only currently tracked addons
-	prevUpdateInfo := am.UpdateInfo
-	am.UpdateInfo = make(map[string]*AddonUpdateInfo, len(am.Addons))
-
-	for _, addon := range am.Addons {
-		if _, ok := am.UpdateInfo[addon.Name]; ok {
-			return fmt.Errorf("duplicate addon found: %v", addon.Name)
-		}
-		if err := am.initializeAddon(addon, prevUpdateInfo[addon.Name]); err != nil {
-			return fmt.Errorf("error loading addon %v: %w", addon.Name, err)
-		}
-		am.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
-	}
-
-	am.netTasks, am.diskTasks = am.NetTasksCfg, am.DiskTasksCfg
-	if am.NetTasksCfg <= 0 {
-		am.NetTasksCfg, am.netTasks = 0, DefaultNetTasks
-	}
-	if am.DiskTasksCfg <= 0 {
-		am.DiskTasksCfg, am.diskTasks = 0, DefaultDiskTasks
-	}
-
-	// create cache dir if provided
-	if am.CacheDir != "" {
-		if err := os.MkdirAll(am.CacheDir, 0755); err != nil {
-			return fmt.Errorf("could not create cache dir: %w", err)
-		} else if am.cacheRoot, err = os.OpenRoot(am.CacheDir); err != nil {
-			return fmt.Errorf("could not open cache dir: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func (am *AddonManager) initializeAddon(addon *Addon, lastUpdateInfo *AddonUpdateInfo) error {
-	if addon.RelType >= GhEnd {
-		return fmt.Errorf("unknown release type for addon %v: %v", addon.Name, addon.RelType)
-	}
-
-	// // convenience to skip addons with a leading -, ie "-PROJECT/ADDON" is skipped
-	// if addon.Name[0] == '-' {
-	// 	addon.Skip = true
-	// 	addon.Name = addon.Name[1:]
-	// }
-
-	// update projName and shortname
-	// addon.Name = "PROJECT/ADDON"; projName, shortName = "PROJECT/", "ADDON"
-	idx := strings.LastIndexByte(addon.Name, '/')
-	if idx <= 0 || idx == len(addon.Name)-1 {
-		return fmt.Errorf("addon name not formatted correctly: expected PROJECT/ADDON, found %v", addon.Name)
-	}
-	addon.projName = addon.Name[:idx+1]
-	addon.shortName = addon.Name[idx+1:]
-
-	// set AddonUpdateInfo, creating it if not found
-	if lastUpdateInfo == nil {
-		lastUpdateInfo = &AddonUpdateInfo{}
-	}
-	addon.AddonUpdateInfo = lastUpdateInfo
-
-	// populate addon.{include,exclude}Dirs from Dirs
-	// dirs starting with '-' are excluded
-	for i, dir := range addon.Dirs {
-		// ensure dir names have a trailing '/'
-		if dir[len(dir)-1] != '/' {
-			dir += "/"
-			addon.Dirs[i] = dir
-		}
-
-		if dir[0] == '-' {
-			addon.excludeDirs = append(addon.excludeDirs, dir[1:])
-		} else {
-			addon.includeDirs = append(addon.includeDirs, dir)
-		}
-	}
-
-	return nil
 }
 
 func (am *AddonManager) UpdateAddons() {
-	netTasks, netCancel := spawnTaskPool(am.netTasks, am.netTasks)
+	netTasks, netCancel := spawnTaskPool(am.NetTasks, am.NetTasks)
 	defer netCancel()
-	diskTasks, diskCancel := spawnTaskPool(am.diskTasks, 12)
+	diskTasks, diskCancel := spawnTaskPool(am.DiskTasks, 12)
 	defer diskCancel()
-	updateTasks, updateRes, updateCancel := spawnTaskResPool[*addonUpdateStatus](am.netTasks*2, len(am.Addons))
+	updateTasks, updateRes, updateCancel := spawnTaskResPool[*addonUpdateStatus](am.NetTasks+2, len(am.Addons))
 	defer updateCancel()
 
 	bufPool := sync.Pool{New: func() any { return &bytes.Buffer{} }}
@@ -158,7 +50,7 @@ func (am *AddonManager) UpdateAddons() {
 			defer close(logs)
 			buf := bufPool.Get().(*bytes.Buffer)
 			defer func() { buf.Reset(); bufPool.Put(buf) }()
-			addon.addonSharedState = &addonSharedState{buf, am.cacheRoot, netTasks, diskTasks, logs}
+			addon.addonSharedState = &addonSharedState{buf, am.CacheDir, netTasks, diskTasks, logs}
 			defer func() { addon.addonSharedState = nil }()
 
 			start := time.Now()
@@ -185,7 +77,6 @@ func (am *AddonManager) UpdateAddons() {
 
 	addonExecSum := time.Duration(0)
 	for status := range updateRes {
-		am.UpdateInfo[status.addon.Name] = status.addon.AddonUpdateInfo
 		addonExecSum += status.execTime
 	}
 	execTime := time.Since(start)
@@ -208,7 +99,21 @@ func (am *AddonManager) UpdateAddons() {
 }
 
 func (am *AddonManager) SaveAddonCfg(filename string) error {
-	data, err := json.MarshalIndent(am, "", "    ")
+	cfg := AddonManagerCfg{
+		Addons:          make([]*AddonCfg, 0, len(am.Addons)),
+		UpdateInfo:      make(map[string]*AddonUpdateInfo, len(am.Addons)),
+		UnmanagedAddons: am.UnmanagedAddons,
+		CacheDir:        am.cfgVars.cacheDir,
+		NetTasks:        am.cfgVars.netTasks,
+		DiskTasks:       am.cfgVars.diskTasks,
+	}
+
+	for _, addon := range am.Addons {
+		cfg.Addons = append(cfg.Addons, addon.AddonCfg)
+		cfg.UpdateInfo[addon.Name] = addon.AddonUpdateInfo
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "    ")
 	if err != nil {
 		return fmt.Errorf("error marshalling addons: %w", err)
 	}
@@ -223,26 +128,57 @@ func (am *AddonManager) SaveAddonCfg(filename string) error {
 
 func (am *AddonManager) String() string {
 	buf := &strings.Builder{}
+	fmt.Fprintln(buf, "AddonManager {")
+	fmt.Fprintf(buf, "  NetTasks: %v, DiskTasks: %v\n", am.NetTasks, am.DiskTasks)
+	if am.CacheDir != nil {
+		fmt.Fprintf(buf, "  CacheDir: %v\n", am.CacheDir.Name())
+	}
 
-	fmt.Fprintln(buf, "CacheDir:", am.CacheDir)
-
+	fmt.Fprintf(buf, "  Addons (%v):\n", len(am.Addons))
 	for _, addon := range am.Addons {
-		fmt.Fprintf(buf, "%v%v\n", tcDim(addon.projName), tcCyan(addon.shortName))
-		fmt.Fprintln(buf, "  Dirs:           ", addon.Dirs)
-		fmt.Fprintln(buf, "  RelType:        ", addon.RelType)
-		fmt.Fprintln(buf, "  includeDirs:    ", addon.includeDirs)
-		fmt.Fprintln(buf, "  excludeDirs:    ", addon.excludeDirs)
-		fmt.Fprintln(buf, "  addonUpdateInfo:")
-		fmt.Fprintln(buf, "    Version:      ", addon.AddonUpdateInfo.Version)
-		fmt.Fprintln(buf, "    UpdatedOn:    ", addon.AddonUpdateInfo.UpdatedOn)
-		fmt.Fprintln(buf, "    RefSha:       ", addon.AddonUpdateInfo.RefSha)
-		fmt.Fprintln(buf, "    ExtractedDirs:", addon.AddonUpdateInfo.ExtractedDirs)
-		fmt.Fprintln(buf, "")
+		skip := "\033[1m" + tcGreen("-")
+		if addon.skip {
+			skip = tcRed("-")
+		}
+
+		dirs := slices.Concat(addon.includeDirs, addon.excludeDirs)
+		for i, dir := range dirs[len(addon.includeDirs):] {
+			dirs[i] = "-" + dir
+		}
+
+		updateInfo := ""
+		if !addon.UpdatedOn.IsZero() {
+			updateInfo = tcDim(addon.UpdatedOn.Local().Format("Jan 2, 2006"))
+		}
+		if addon.RefSha != "" {
+			updateInfo += " " + tcDim(addon.RefSha)
+		}
+
+		release := ""
+		switch addon.RelType {
+		case GhRelease:
+			release = "GhRelease"
+		case GhTag:
+			release = "GhTag"
+		case GhEnd:
+			release = tcRed("GhEnd")
+		default:
+			release = tcRed(fmt.Sprint("unkown release: ", addon.RelType))
+		}
+
+		fmt.Fprintf(buf, "    %v %v%v", skip, tcDim(addon.projName), tcCyan(addon.shortName))
+		fmt.Fprintf(buf, " (%v on %v %v)\n", tcGreen(addon.Version), updateInfo, release)
+		fmt.Fprintf(buf, "        Dirs:      %v\n", dirs)
+		fmt.Fprintf(buf, "        Extracted: %v\n", addon.ExtractedDirs)
+		fmt.Fprintln(buf)
 	}
 
-	for addon, url := range am.UnmanagedAddons {
-		fmt.Fprintf(buf, "%v: %v\n", addon, url)
+	fmt.Fprintf(buf, "  UnmanagedAddons (%v):\n", len(am.UnmanagedAddons))
+	for _, addon := range am.UnmanagedAddons {
+		fmt.Fprintf(buf, "    - %v\n", addon)
 	}
+
+	buf.WriteString("}")
 
 	return buf.String()
 }

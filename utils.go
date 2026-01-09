@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -82,6 +83,17 @@ func (a *Addon) cacheDownloadTask(url string, fileNm string) (err error) {
 	}
 
 	return
+}
+
+func clamp[T cmp.Ordered](lowerBound, n, upperBound T) T {
+	if n < lowerBound {
+		return lowerBound
+	}
+	if n > upperBound {
+		return upperBound
+	}
+
+	return n
 }
 
 // terminal colors & styles

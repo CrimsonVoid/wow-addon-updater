@@ -11,22 +11,18 @@
             "Name": "BigWigsMods/LittleWigs",
             "Dirs": [
                 "LittleWigs/",
-                "LittleWigs_Shadowlands/",
+                "-LittleWigs_Shadowlands/",
                 "LittleWigs_BattleForAzeroth/"
             ]
         },
         {
-            "Name": "WeakAuras/WeakAuras2",
-            "Skip": true
+            "Name": "-WeakAuras/WeakAuras2"
         },
         {
             "Name": "kesava-wow/kuinameplates2"
         },
         {
-            "Name": "rljohn/kuinameplates-target-helper"
-        },
-        {
-            "Name": "kesava-wow/kuispelllistconfig",
+            "Name": "-kesava-wow/kuispelllistconfig",
             "RelType": 1
         }
     ],

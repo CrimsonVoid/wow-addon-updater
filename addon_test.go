@@ -5,7 +5,7 @@ import (
 )
 
 func TestAddon_findTaggedRel(t *testing.T) {
-	mkDlAsset := func(fileNm, ver string, relType GhRelType) *downloadAsset {
+	mkDlAsset := func(fileNm, ver string, relType GhAssetType) *downloadAsset {
 		return &downloadAsset{
 			Name:        fileNm,
 			DownloadUrl: "https://example.com/" + fileNm,
@@ -37,7 +37,7 @@ func TestAddon_findTaggedRel(t *testing.T) {
 				},
 				relInfo: releaseInfo{},
 			},
-			expected: mkDlAsset("addon-1.0.0.zip", "v1.tag", GhRel),
+			expected: mkDlAsset("addon-1.0.0.zip", "v1.tag", GhRelease),
 		}, {
 			name: "release.json found",
 			input: &input{
@@ -55,7 +55,7 @@ func TestAddon_findTaggedRel(t *testing.T) {
 					{"v3.0.0", "ccc.zip", []*releaseMetadata{{"cata", 40400}, {"mainline", 110002}}},
 				}},
 			},
-			expected: mkDlAsset("ccc.zip", "v3.0.0", GhRel),
+			expected: mkDlAsset("ccc.zip", "v3.0.0", GhRelease),
 		}, {
 			name: "no mainline release in release.json, fallback to first non-classic zip",
 			input: &input{
@@ -73,7 +73,7 @@ func TestAddon_findTaggedRel(t *testing.T) {
 					{"v3.0.0", "ccc.zip", []*releaseMetadata{{"mainline_", 110002}}},
 				}},
 			},
-			expected: mkDlAsset("aaa.zip", "v1.tag", GhRel),
+			expected: mkDlAsset("aaa.zip", "v1.tag", GhRelease),
 		}, {
 			name: "no mainline release in release.json with classic zips",
 			input: &input{
@@ -91,7 +91,7 @@ func TestAddon_findTaggedRel(t *testing.T) {
 					{"v3.0.0", "ccc.zip", []*releaseMetadata{{"mainline_", 110002}}},
 				}},
 			},
-			expected: mkDlAsset("addon-1.0.0.zip", "v1.tag", GhRel),
+			expected: mkDlAsset("addon-1.0.0.zip", "v1.tag", GhRelease),
 		},
 	}
 
