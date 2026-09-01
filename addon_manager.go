@@ -41,6 +41,10 @@ func (am *AddonManager) UpdateAddons() {
 	bufPool := sync.Pool{New: func() any { return &bytes.Buffer{} }}
 	logsCh := make(chan chan string, len(am.Addons))
 
+	if am.CacheDir != nil {
+		fmt.Println(tcDim(tcYellow("Writing to cache dir:")), tcMagenta(am.CacheDir.Name()), "\n")
+	}
+
 	start := time.Now()
 	for _, addon := range am.Addons {
 		logs := make(chan string, 8)

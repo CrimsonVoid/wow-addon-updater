@@ -103,8 +103,8 @@ func tcDim(s string) string {
 	return "\033[2m" + s + tcReset
 }
 
-func tcMagentaDim(s string) string {
-	return "\033[1;2;35m" + s + tcReset
+func tcMagenta(s string) string {
+	return "\033[1;35m" + s + tcReset
 }
 
 func tcGreen(s string) string {
@@ -117,4 +117,8 @@ func tcCyan(s string) string {
 
 func tcRed(s string) string {
 	return "\033[1;31m" + s + tcReset
+}
+
+func tcYellow(s string) string {
+	return "\033[1;33m" + s + tcReset
 }

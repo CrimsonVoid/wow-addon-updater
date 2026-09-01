@@ -85,7 +85,7 @@ func (a *Addon) update() *addonUpdateStatus {
 		status.err = a.Errorf("error extracting update for %v: %w", a.shortName, err)
 		return status
 	}
-	a.Logf("extracted %v\n", tcMagentaDim(fmt.Sprint(a.ExtractedDirs)))
+	a.Logf("extracted %v\n", tcDim(tcMagenta(fmt.Sprint(a.ExtractedDirs))))
 
 	a.Version = asset.Version
 	a.UpdatedOn = asset.UpdatedAt

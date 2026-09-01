@@ -1,33 +1,52 @@
 {
     "Addons": [
         {
-            "Name": "BigWigsMods/BigWigs",
+            "Name": "Total-RP/Total-RP-3"
+        },
+        {
+            "Name": "simulationcraft/simc-addon"
+        },
+        {
+            "Name": "EllesmereGaming/EllesmereUI",
             "Dirs": [
-                "-BigWigs_KhazAlgar/",
-                "-BigWigs_NerubarPalace/"
+                "EllesmereUI/",
+                "EllesmereUINameplates/",
+                "EllesmereUIOptions/"
             ]
         },
         {
-            "Name": "BigWigsMods/LittleWigs",
-            "Dirs": [
-                "LittleWigs/",
-                "-LittleWigs_Shadowlands/",
-                "LittleWigs_BattleForAzeroth/"
-            ]
-        },
-        {
-            "Name": "-WeakAuras/WeakAuras2"
-        },
-        {
-            "Name": "kesava-wow/kuinameplates2"
-        },
-        {
-            "Name": "-kesava-wow/kuispelllistconfig",
-            "RelType": 1
+            "Name": "-Nnoggie/MythicDungeonTools"
         }
     ],
-    "UnmanagedAddons": [
-        "https://example.com/wow/addonA"
-    ],
+    "UpdateInfo": {
+        "EllesmereGaming/EllesmereUI": {
+            "Version": "v9.1.5",
+            "UpdatedOn": "2026-09-01T09:04:26Z",
+            "ExtractedDirs": [
+                "EllesmereUI",
+                "EllesmereUINameplates",
+                "EllesmereUIOptions"
+            ]
+        },
+        "Nnoggie/MythicDungeonTools": {
+            "UpdatedOn": "0001-01-01T00:00:00Z",
+            "ExtractedDirs": null
+        },
+        "Total-RP/Total-RP-3": {
+            "Version": "3.4.2",
+            "UpdatedOn": "2026-08-18T23:57:37Z",
+            "ExtractedDirs": [
+                "totalRP3",
+                "totalRP3_Data"
+            ]
+        },
+        "simulationcraft/simc-addon": {
+            "Version": "12.1.0-04",
+            "UpdatedOn": "2026-08-21T23:15:57Z",
+            "ExtractedDirs": [
+                "Simulationcraft"
+            ]
+        }
+    },
     "CacheDir": "cache"
 }
